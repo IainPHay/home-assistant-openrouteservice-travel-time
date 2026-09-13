@@ -4,6 +4,15 @@ All notable changes to OpenRouteService Travel Time are documented here.
 
 The project uses semantic versioning for integration releases.
 
+## 0.1.0-alpha.4 — development
+
+### Fixed
+
+- Resolve `person` endpoints that are inside a Home Assistant zone even when the `person` entity itself does not expose latitude/longitude attributes.
+- Fall back to the person's currently selected `source` device tracker when direct person coordinates and zone coordinates are unavailable.
+- Preserve the rule that no location is guessed: if person, zone and source tracker cannot provide trustworthy coordinates, the route remains unavailable.
+- Added Home Assistant-native regression tests covering direct person coordinates, zone resolution, zone friendly-name matching, source-tracker fallback, direct device-tracker resolution and unavailable-location handling.
+
 ## 0.1.0-alpha.3 — development
 
 ### Fixed

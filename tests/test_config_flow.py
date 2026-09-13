@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -336,3 +336,32 @@ async def test_reconfigure_rejects_duplicate_of_another_route(hass) -> None:
 
     assert result2["type"] is FlowResultType.ABORT
     assert result2["reason"] == "already_configured"
+
+
+async def test_validate_route_injects_home_assistant_session(hass) -> None:
+    """Route validation uses HA's shared session and the configured route data."""
+    session = object()
+    client = MagicMock()
+    client.async_route = AsyncMock(return_value=RouteResult(321.0, 654.0))
+    data = _entry_data()
+
+    with (
+        patch(
+            "custom_components.openrouteservice_travel_time.config_flow.async_get_clientsession",
+            return_value=session,
+        ),
+        patch(
+            "custom_components.openrouteservice_travel_time.config_flow.OpenRouteServiceClient",
+            return_value=client,
+        ) as client_cls,
+    ):
+        result = await _async_validate_route(hass, data)
+
+    assert result == RouteResult(321.0, 654.0)
+    client_cls.assert_called_once_with(session, "test-key")
+    origin, destination, profile = client.async_route.await_args.args
+    assert origin.latitude == ORIGIN["latitude"]
+    assert origin.longitude == ORIGIN["longitude"]
+    assert destination.latitude == DESTINATION["latitude"]
+    assert destination.longitude == DESTINATION["longitude"]
+    assert profile == DEFAULT_PROFILE

@@ -29,14 +29,18 @@ from custom_components.openrouteservice_travel_time.coordinator import (
 from custom_components.openrouteservice_travel_time.models import RouteResult
 
 
-def _entry() -> MockConfigEntry:
+def _entry(*, origin: object | None = None) -> MockConfigEntry:
     return MockConfigEntry(
         domain=DOMAIN,
         title="Home to stop",
         data={
             CONF_API_KEY: "key",
             CONF_NAME: "Home to stop",
-            CONF_ORIGIN: {"latitude": 55.167, "longitude": -1.691},
+            CONF_ORIGIN: (
+                origin
+                if origin is not None
+                else {"latitude": 55.167, "longitude": -1.691}
+            ),
             CONF_DESTINATION: {"latitude": 55.172, "longitude": -1.680},
             CONF_PROFILE: DEFAULT_PROFILE,
         },
@@ -88,11 +92,7 @@ async def test_provider_failure_is_transient_update_failure(hass) -> None:
 
 async def test_invalid_configured_coordinates_are_update_failure(hass) -> None:
     """Invalid coordinates fail the route update without guessing a fallback."""
-    entry = _entry()
-    entry.data = {
-        **entry.data,
-        CONF_ORIGIN: {"latitude": "invalid", "longitude": -1.691},
-    }
+    entry = _entry(origin={"latitude": "invalid", "longitude": -1.691})
     entry.add_to_hass(hass)
     client = MagicMock()
     client.async_route = AsyncMock()

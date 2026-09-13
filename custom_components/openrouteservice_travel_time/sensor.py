@@ -66,14 +66,11 @@ class OpenRouteServiceSensor(
         )
 
     @property
-    def native_value(self) -> float | None:
+    def native_value(self) -> float:
         """Return the current duration or distance."""
-        data = self.coordinator.data
-        if data is None:
-            return None
         if self.entity_description.key == "duration":
-            return data.duration_seconds
-        return data.distance_metres
+            return self.coordinator.data.duration_seconds
+        return self.coordinator.data.distance_metres
 
 
 async def async_setup_entry(

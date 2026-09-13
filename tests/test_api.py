@@ -119,6 +119,7 @@ async def test_route_network_error_is_classified() -> None:
             {"error": {"message": "Invalid API key or access to this API has been disallowed"}},
             OpenRouteServiceForbiddenError,
         ),
+        (403, {"error": {"message": "Access denied"}}, OpenRouteServiceForbiddenError),
         (429, {"error": {"message": "Rate limit exceeded"}}, OpenRouteServiceRateLimitError),
         (404, {"error": {"message": "Not found"}}, OpenRouteServiceNoRouteError),
         (400, {"error": {"code": 2009, "message": "Route could not be found"}}, OpenRouteServiceNoRouteError),

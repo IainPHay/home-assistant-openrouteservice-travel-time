@@ -82,17 +82,6 @@ def test_sensor_metadata_and_values() -> None:
     assert distance.device_info["name"] == "Home to stop"
 
 
-def test_sensor_is_none_without_coordinator_data() -> None:
-    """Entities do not guess a value before a successful update."""
-    entry = _entry()
-    coordinator = _coordinator()
-    coordinator.data = None
-
-    entity = OpenRouteServiceSensor(coordinator, entry, SENSOR_DESCRIPTIONS[0])
-
-    assert entity.native_value is None
-
-
 async def test_sensor_platform_adds_both_route_entities(hass) -> None:
     """The sensor platform exposes exactly Duration and Distance initially."""
     entry = _entry()

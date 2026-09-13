@@ -4,6 +4,18 @@ All notable changes to OpenRouteService Travel Time are documented here.
 
 The project uses semantic versioning for integration releases.
 
+## 0.1.0-alpha.5 — development
+
+### Changed
+
+- Duration is now exposed to Home Assistant in minutes, with zero suggested decimal places, while provider results remain stored internally in seconds.
+- Distance keeps native metres but now suggests a whole-metre display.
+- Added per-route provider quota protection: no config entry can call OpenRouteService more often than once every five minutes, including repeated manual refreshes.
+- Added coordinate-aware route caching. Routes are recalculated after material endpoint movement (25 m or more), while unchanged routes reuse the cached result.
+- Added a six-hour cache TTL so fixed or stationary routes are still periodically revalidated instead of being cached indefinitely.
+- Added Home Assistant-native regression tests for request throttling, route caching, cache expiry, movement-triggered refresh and sensor presentation.
+- Documented the provider-call ceiling and multi-person/BODS architecture implications.
+
 ## 0.1.0-alpha.4 — development
 
 ### Fixed

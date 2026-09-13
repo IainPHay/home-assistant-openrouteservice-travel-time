@@ -79,9 +79,12 @@ class OpenRouteServiceClient:
                 timeout=ClientTimeout(total=REQUEST_TIMEOUT_SECONDS),
             ) as response:
                 text = await response.text()
-                payload = _decode_json(text)
                 if response.status >= 400:
-                    _raise_for_error_response(response.status, payload)
+                    _raise_for_error_response(
+                        response.status,
+                        _decode_error_json(text),
+                    )
+                payload = _decode_json(text)
         except (ClientError, TimeoutError) as err:
             raise OpenRouteServiceConnectionError(
                 "Unable to communicate with openrouteservice"
@@ -98,6 +101,14 @@ def _decode_json(text: str) -> object:
         raise OpenRouteServiceResponseError(
             "openrouteservice returned invalid JSON"
         ) from err
+
+
+def _decode_error_json(text: str) -> object:
+    """Decode an error body, tolerating non-JSON proxy/provider failures."""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return {}
 
 
 def _error_details(payload: object) -> tuple[int | None, str]:

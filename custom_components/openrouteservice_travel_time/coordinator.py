@@ -22,7 +22,8 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
-from .models import RouteResult, coordinates_from_config
+from .location import EndpointUnavailableError, resolve_endpoint
+from .models import RouteResult
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,10 +49,12 @@ class OpenRouteServiceCoordinator(DataUpdateCoordinator[RouteResult]):
         )
 
     async def _async_update_data(self) -> RouteResult:
-        """Resolve route configuration and request fresh provider data."""
+        """Resolve current endpoints and request fresh provider data."""
         try:
-            origin = coordinates_from_config(self.entry.data[CONF_ORIGIN])
-            destination = coordinates_from_config(self.entry.data[CONF_DESTINATION])
+            origin = resolve_endpoint(self.hass, self.entry.data[CONF_ORIGIN])
+            destination = resolve_endpoint(
+                self.hass, self.entry.data[CONF_DESTINATION]
+            )
             profile = str(self.entry.data.get(CONF_PROFILE, DEFAULT_PROFILE))
             return await self.client.async_route(origin, destination, profile)
         except OpenRouteServiceAuthenticationError as err:
@@ -59,5 +62,9 @@ class OpenRouteServiceCoordinator(DataUpdateCoordinator[RouteResult]):
                 translation_domain=DOMAIN,
                 translation_key="invalid_auth",
             ) from err
-        except (OpenRouteServiceError, ValueError) as err:
+        except EndpointUnavailableError as err:
+            raise UpdateFailed(str(err)) from err
+        except ValueError as err:
+            raise UpdateFailed("Configured route endpoint is invalid") from err
+        except OpenRouteServiceError as err:
             raise UpdateFailed(str(err)) from err

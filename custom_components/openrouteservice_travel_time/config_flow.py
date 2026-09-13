@@ -9,12 +9,7 @@ from typing import Any, override
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
-from homeassistant.const import (
-    CONF_API_KEY,
-    CONF_LATITUDE,
-    CONF_LONGITUDE,
-    CONF_NAME,
-)
+from homeassistant.const import CONF_API_KEY, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -30,62 +25,136 @@ from .api import (
 )
 from .const import (
     CONF_DESTINATION,
+    CONF_DESTINATION_ENTITY,
+    CONF_DESTINATION_LOCATION,
+    CONF_DESTINATION_TYPE,
     CONF_ORIGIN,
+    CONF_ORIGIN_ENTITY,
+    CONF_ORIGIN_LOCATION,
+    CONF_ORIGIN_TYPE,
     CONF_PROFILE,
     DEFAULT_PROFILE,
     DOMAIN,
+    ENDPOINT_ENTITY,
+    ENDPOINT_FIXED,
+    LOCATION_ENTITY_DOMAINS,
 )
-from .models import RouteResult, coordinates_from_config
+from .location import EndpointUnavailableError, resolve_endpoint
+from .models import (
+    RouteResult,
+    endpoint_from_config,
+    endpoint_signature,
+    entity_endpoint_config,
+    fixed_endpoint_config,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 DEFAULT_ROUTE_NAME = "Walking route"
 
 
-def _location_selector() -> selector.LocationSelector:
-    """Return the shared fixed-location selector."""
-    return selector.LocationSelector(
-        selector.LocationSelectorConfig(radius=False, icon="")
+def _endpoint_type_selector() -> selector.SelectSelector:
+    """Return the fixed/dynamic endpoint selector."""
+    return selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=[ENDPOINT_FIXED, ENDPOINT_ENTITY],
+            translation_key="endpoint_type",
+            mode=selector.SelectSelectorMode.DROPDOWN,
+        )
     )
 
 
-def _route_schema(
-    hass: HomeAssistant,
+def _start_schema(
     values: Mapping[str, Any] | None = None,
     *,
     include_api_key: bool,
 ) -> vol.Schema:
-    """Build a route form with visible defaults/suggested values."""
+    """Build the route name and endpoint-type form."""
     current = values or {}
     fields: dict[vol.Marker, object] = {}
     if include_api_key:
         fields[vol.Required(CONF_API_KEY)] = selector.TextSelector(
             selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
         )
-
     fields[vol.Required(CONF_NAME, default=current.get(CONF_NAME, DEFAULT_ROUTE_NAME))] = (
         selector.TextSelector(selector.TextSelectorConfig())
     )
     fields[
         vol.Required(
-            CONF_ORIGIN,
-            default=current.get(
-                CONF_ORIGIN,
-                {
-                    CONF_LATITUDE: hass.config.latitude,
-                    CONF_LONGITUDE: hass.config.longitude,
-                },
-            ),
+            CONF_ORIGIN_TYPE,
+            default=current.get(CONF_ORIGIN_TYPE, ENDPOINT_FIXED),
         )
-    ] = _location_selector()
+    ] = _endpoint_type_selector()
+    fields[
+        vol.Required(
+            CONF_DESTINATION_TYPE,
+            default=current.get(CONF_DESTINATION_TYPE, ENDPOINT_FIXED),
+        )
+    ] = _endpoint_type_selector()
+    return vol.Schema(fields)
 
-    if CONF_DESTINATION in current:
-        destination_marker = vol.Required(
-            CONF_DESTINATION, default=current[CONF_DESTINATION]
-        )
+
+def _location_selector() -> selector.LocationSelector:
+    """Return a fixed-location selector."""
+    return selector.LocationSelector(
+        selector.LocationSelectorConfig(radius=False, icon="")
+    )
+
+
+def _entity_selector() -> selector.EntitySelector:
+    """Return a selector restricted to location-capable entity domains."""
+    return selector.EntitySelector(
+        selector.EntitySelectorConfig(domain=list(LOCATION_ENTITY_DOMAINS))
+    )
+
+
+def _endpoint_schema(
+    hass: HomeAssistant,
+    origin_type: str,
+    destination_type: str,
+    values: Mapping[str, Any] | None = None,
+) -> vol.Schema:
+    """Build fields for the chosen endpoint types."""
+    current = values or {}
+    fields: dict[vol.Marker, object] = {}
+
+    if origin_type == ENDPOINT_ENTITY:
+        marker = vol.Required(CONF_ORIGIN_ENTITY)
+        if CONF_ORIGIN_ENTITY in current:
+            marker = vol.Required(
+                CONF_ORIGIN_ENTITY,
+                default=current[CONF_ORIGIN_ENTITY],
+            )
+        fields[marker] = _entity_selector()
     else:
-        destination_marker = vol.Required(CONF_DESTINATION)
-    fields[destination_marker] = _location_selector()
+        origin_default = current.get(
+            CONF_ORIGIN_LOCATION,
+            {
+                "latitude": hass.config.latitude,
+                "longitude": hass.config.longitude,
+            },
+        )
+        fields[
+            vol.Required(CONF_ORIGIN_LOCATION, default=origin_default)
+        ] = _location_selector()
+
+    if destination_type == ENDPOINT_ENTITY:
+        marker = vol.Required(CONF_DESTINATION_ENTITY)
+        if CONF_DESTINATION_ENTITY in current:
+            marker = vol.Required(
+                CONF_DESTINATION_ENTITY,
+                default=current[CONF_DESTINATION_ENTITY],
+            )
+        fields[marker] = _entity_selector()
+    else:
+        if CONF_DESTINATION_LOCATION in current:
+            marker = vol.Required(
+                CONF_DESTINATION_LOCATION,
+                default=current[CONF_DESTINATION_LOCATION],
+            )
+        else:
+            marker = vol.Required(CONF_DESTINATION_LOCATION)
+        fields[marker] = _location_selector()
 
     return vol.Schema(fields)
 
@@ -101,15 +170,78 @@ def _api_key_schema() -> vol.Schema:
     )
 
 
+def _endpoint_type(value: object) -> str:
+    """Return the persisted endpoint type."""
+    return endpoint_from_config(value).kind
+
+
+def _endpoint_form_defaults(data: Mapping[str, Any]) -> dict[str, Any]:
+    """Convert persisted endpoints back into UI field defaults."""
+    defaults: dict[str, Any] = {}
+    origin = endpoint_from_config(data[CONF_ORIGIN])
+    if origin.kind == ENDPOINT_ENTITY:
+        assert origin.entity_id is not None
+        defaults[CONF_ORIGIN_ENTITY] = origin.entity_id
+    else:
+        assert origin.coordinates is not None
+        defaults[CONF_ORIGIN_LOCATION] = {
+            "latitude": origin.coordinates.latitude,
+            "longitude": origin.coordinates.longitude,
+        }
+
+    destination = endpoint_from_config(data[CONF_DESTINATION])
+    if destination.kind == ENDPOINT_ENTITY:
+        assert destination.entity_id is not None
+        defaults[CONF_DESTINATION_ENTITY] = destination.entity_id
+    else:
+        assert destination.coordinates is not None
+        defaults[CONF_DESTINATION_LOCATION] = {
+            "latitude": destination.coordinates.latitude,
+            "longitude": destination.coordinates.longitude,
+        }
+    return defaults
+
+
+def _build_route_data(
+    pending: Mapping[str, Any],
+    endpoint_input: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build canonical persisted route data from the two UI steps."""
+    data = {
+        key: value
+        for key, value in pending.items()
+        if key not in {CONF_ORIGIN_TYPE, CONF_DESTINATION_TYPE}
+    }
+
+    if pending[CONF_ORIGIN_TYPE] == ENDPOINT_ENTITY:
+        data[CONF_ORIGIN] = entity_endpoint_config(
+            str(endpoint_input[CONF_ORIGIN_ENTITY])
+        )
+    else:
+        data[CONF_ORIGIN] = fixed_endpoint_config(
+            endpoint_input[CONF_ORIGIN_LOCATION]
+        )
+
+    if pending[CONF_DESTINATION_TYPE] == ENDPOINT_ENTITY:
+        data[CONF_DESTINATION] = entity_endpoint_config(
+            str(endpoint_input[CONF_DESTINATION_ENTITY])
+        )
+    else:
+        data[CONF_DESTINATION] = fixed_endpoint_config(
+            endpoint_input[CONF_DESTINATION_LOCATION]
+        )
+
+    data[CONF_PROFILE] = DEFAULT_PROFILE
+    return data
+
+
 def _route_signature(data: Mapping[str, Any]) -> str:
-    """Return a stable signature for duplicate-route prevention."""
-    origin = coordinates_from_config(data[CONF_ORIGIN])
-    destination = coordinates_from_config(data[CONF_DESTINATION])
+    """Return a stable route identity that does not track moving coordinates."""
     profile = str(data.get(CONF_PROFILE, DEFAULT_PROFILE))
     return (
         f"{profile}:"
-        f"{origin.latitude:.6f},{origin.longitude:.6f}:"
-        f"{destination.latitude:.6f},{destination.longitude:.6f}"
+        f"{endpoint_signature(data[CONF_ORIGIN])}:"
+        f"{endpoint_signature(data[CONF_DESTINATION])}"
     )
 
 
@@ -130,9 +262,9 @@ async def _async_validate_route(
     hass: HomeAssistant,
     data: Mapping[str, Any],
 ) -> RouteResult:
-    """Validate credentials and route inputs using a real route request."""
-    origin = coordinates_from_config(data[CONF_ORIGIN])
-    destination = coordinates_from_config(data[CONF_DESTINATION])
+    """Validate current endpoint coordinates and provider access."""
+    origin = resolve_endpoint(hass, data[CONF_ORIGIN])
+    destination = resolve_endpoint(hass, data[CONF_DESTINATION])
     client = OpenRouteServiceClient(
         async_get_clientsession(hass),
         str(data[CONF_API_KEY]),
@@ -145,7 +277,7 @@ async def _async_validate_route(
 
 
 def _error_key(err: Exception) -> str:
-    """Map provider exceptions to translated config-flow errors."""
+    """Map provider and endpoint exceptions to translated config-flow errors."""
     if isinstance(err, OpenRouteServiceAuthenticationError):
         return "invalid_auth"
     if isinstance(err, OpenRouteServiceForbiddenError):
@@ -156,7 +288,11 @@ def _error_key(err: Exception) -> str:
         return "no_route"
     if isinstance(err, OpenRouteServiceResponseError):
         return "invalid_response"
-    if isinstance(err, (OpenRouteServiceConnectionError, ValueError)):
+    if isinstance(err, EndpointUnavailableError):
+        return "location_unavailable"
+    if isinstance(err, ValueError):
+        return "invalid_location"
+    if isinstance(err, OpenRouteServiceConnectionError):
         return "cannot_connect"
     return "unknown"
 
@@ -165,6 +301,9 @@ class OpenRouteServiceConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle OpenRouteService Travel Time configuration."""
 
     VERSION = 1
+
+    _pending_data: dict[str, Any] | None = None
+    _endpoint_defaults: dict[str, Any] | None = None
 
     async def _validate(
         self, data: Mapping[str, Any]
@@ -179,6 +318,7 @@ class OpenRouteServiceConfigFlow(ConfigFlow, domain=DOMAIN):
             OpenRouteServiceNoRouteError,
             OpenRouteServiceResponseError,
             OpenRouteServiceConnectionError,
+            EndpointUnavailableError,
             ValueError,
         ) as err:
             return False, {"base": _error_key(err)}
@@ -191,27 +331,49 @@ class OpenRouteServiceConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Configure one fixed-coordinate walking route."""
-        errors: dict[str, str] = {}
+        """Collect route identity and endpoint types."""
         if user_input is not None:
-            data = dict(user_input)
-            data[CONF_PROFILE] = DEFAULT_PROFILE
-            valid, errors = await self._validate(data)
-            if valid:
-                signature = _route_signature(data)
-                await self.async_set_unique_id(signature)
-                self._abort_if_unique_id_configured()
-                return self.async_create_entry(
-                    title=str(data[CONF_NAME]),
-                    data=data,
-                )
+            self._pending_data = dict(user_input)
+            self._endpoint_defaults = {}
+            return await self.async_step_endpoints()
 
         return self.async_show_form(
             step_id="user",
-            data_schema=_route_schema(
+            data_schema=_start_schema(include_api_key=True),
+        )
+
+    async def async_step_endpoints(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Collect fixed locations or dynamic Home Assistant entities."""
+        if self._pending_data is None:
+            return self.async_abort(reason="unknown")
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            try:
+                data = _build_route_data(self._pending_data, user_input)
+            except ValueError as err:
+                errors["base"] = _error_key(err)
+            else:
+                valid, errors = await self._validate(data)
+                if valid:
+                    signature = _route_signature(data)
+                    await self.async_set_unique_id(signature)
+                    self._abort_if_unique_id_configured()
+                    return self.async_create_entry(
+                        title=str(data[CONF_NAME]),
+                        data=data,
+                    )
+            self._endpoint_defaults = dict(user_input)
+
+        return self.async_show_form(
+            step_id="endpoints",
+            data_schema=_endpoint_schema(
                 self.hass,
-                user_input,
-                include_api_key=True,
+                str(self._pending_data[CONF_ORIGIN_TYPE]),
+                str(self._pending_data[CONF_DESTINATION_TYPE]),
+                self._endpoint_defaults,
             ),
             errors=errors,
         )
@@ -247,40 +409,68 @@ class OpenRouteServiceConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_reconfigure(
         self, user_input: Mapping[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Reconfigure route name and fixed endpoints."""
-        errors: dict[str, str] = {}
+        """Collect updated route identity and endpoint types."""
         entry = self._get_reconfigure_entry()
-        if user_input is not None:
-            data = dict(entry.data)
-            data.update(user_input)
-            data[CONF_PROFILE] = DEFAULT_PROFILE
-            valid, errors = await self._validate(data)
-            if valid:
-                signature = _route_signature(data)
-                if _duplicate_route(
-                    self,
-                    signature,
-                    ignore_entry_id=entry.entry_id,
-                ):
-                    return self.async_abort(reason="already_configured")
-                return self.async_update_reload_and_abort(
-                    entry,
-                    unique_id=signature,
-                    title=str(data[CONF_NAME]),
-                    data=data,
-                )
 
-        current = {
+        if user_input is not None:
+            self._pending_data = {
+                **dict(entry.data),
+                CONF_NAME: user_input[CONF_NAME],
+                CONF_ORIGIN_TYPE: user_input[CONF_ORIGIN_TYPE],
+                CONF_DESTINATION_TYPE: user_input[CONF_DESTINATION_TYPE],
+            }
+            self._endpoint_defaults = _endpoint_form_defaults(entry.data)
+            return await self.async_step_reconfigure_endpoints()
+
+        values = {
             CONF_NAME: entry.data[CONF_NAME],
-            CONF_ORIGIN: entry.data[CONF_ORIGIN],
-            CONF_DESTINATION: entry.data[CONF_DESTINATION],
+            CONF_ORIGIN_TYPE: _endpoint_type(entry.data[CONF_ORIGIN]),
+            CONF_DESTINATION_TYPE: _endpoint_type(entry.data[CONF_DESTINATION]),
         }
         return self.async_show_form(
             step_id="reconfigure",
-            data_schema=_route_schema(
+            data_schema=_start_schema(values, include_api_key=False),
+        )
+
+    async def async_step_reconfigure_endpoints(
+        self, user_input: Mapping[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Validate and persist reconfigured endpoints."""
+        if self._pending_data is None:
+            return self.async_abort(reason="unknown")
+
+        entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            try:
+                data = _build_route_data(self._pending_data, user_input)
+            except ValueError as err:
+                errors["base"] = _error_key(err)
+            else:
+                valid, errors = await self._validate(data)
+                if valid:
+                    signature = _route_signature(data)
+                    if _duplicate_route(
+                        self,
+                        signature,
+                        ignore_entry_id=entry.entry_id,
+                    ):
+                        return self.async_abort(reason="already_configured")
+                    return self.async_update_reload_and_abort(
+                        entry,
+                        unique_id=signature,
+                        title=str(data[CONF_NAME]),
+                        data=data,
+                    )
+            self._endpoint_defaults = dict(user_input)
+
+        return self.async_show_form(
+            step_id="reconfigure_endpoints",
+            data_schema=_endpoint_schema(
                 self.hass,
-                current,
-                include_api_key=False,
+                str(self._pending_data[CONF_ORIGIN_TYPE]),
+                str(self._pending_data[CONF_DESTINATION_TYPE]),
+                self._endpoint_defaults,
             ),
             errors=errors,
         )

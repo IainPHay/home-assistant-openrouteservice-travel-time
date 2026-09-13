@@ -16,6 +16,7 @@ from custom_components.openrouteservice_travel_time.api import (
     OpenRouteServiceNoRouteError,
     OpenRouteServiceRateLimitError,
     OpenRouteServiceResponseError,
+    _decode_error_json,
     _decode_json,
     _error_details,
     _number,
@@ -153,10 +154,45 @@ def test_error_detail_extraction(
     assert _error_details(payload) == expected
 
 
-def test_invalid_json_is_rejected() -> None:
+def test_invalid_json_is_rejected_for_success_response() -> None:
     """HTML or broken JSON never masquerades as route data."""
     with pytest.raises(OpenRouteServiceResponseError):
         _decode_json("<html>bad gateway</html>")
+
+
+def test_invalid_error_json_is_tolerated_for_status_classification() -> None:
+    """Proxy HTML on an error status still allows safe status classification."""
+    assert _decode_error_json("<html>forbidden</html>") == {}
+
+
+async def test_non_json_401_still_requests_reauthentication() -> None:
+    """A 401 does not depend on a JSON error body to classify credentials."""
+    client = OpenRouteServiceClient(  # type: ignore[arg-type]
+        FakeSession(FakeResponse(401, "<html>unauthorised</html>")),
+        "bad-key",
+    )
+
+    with pytest.raises(OpenRouteServiceAuthenticationError):
+        await client.async_route(
+            Coordinates(55.1, -1.6),
+            Coordinates(55.2, -1.5),
+            "foot-walking",
+        )
+
+
+async def test_non_json_403_remains_forbidden_not_invalid_auth() -> None:
+    """An ambiguous 403 remains access-forbidden rather than forcing reauth."""
+    client = OpenRouteServiceClient(  # type: ignore[arg-type]
+        FakeSession(FakeResponse(403, "<html>forbidden</html>")),
+        "key",
+    )
+
+    with pytest.raises(OpenRouteServiceForbiddenError):
+        await client.async_route(
+            Coordinates(55.1, -1.6),
+            Coordinates(55.2, -1.5),
+            "foot-walking",
+        )
 
 
 @pytest.mark.parametrize(
@@ -186,18 +222,3 @@ def test_route_numbers_must_be_finite_non_negative(value: object) -> None:
 def test_route_numbers_accept_ints() -> None:
     """Integer provider values are normalised to floats."""
     assert _number(42, "distance") == 42.0
-
-
-async def test_route_http_failure_uses_provider_classifier() -> None:
-    """HTTP failures from a real client request use the provider classifier."""
-    session = FakeSession(
-        FakeResponse(429, '{"error":{"message":"Rate limit exceeded"}}')
-    )
-    client = OpenRouteServiceClient(session, "key")  # type: ignore[arg-type]
-
-    with pytest.raises(OpenRouteServiceRateLimitError):
-        await client.async_route(
-            Coordinates(55.1, -1.6),
-            Coordinates(55.2, -1.5),
-            "foot-walking",
-        )

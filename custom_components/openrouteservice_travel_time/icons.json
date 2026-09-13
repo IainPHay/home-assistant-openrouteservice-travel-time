@@ -1,0 +1,12 @@
+{
+  "entity": {
+    "sensor": {
+      "duration": {
+        "default": "mdi:timer-outline"
+      },
+      "distance": {
+        "default": "mdi:map-marker-distance"
+      }
+    }
+  }
+}

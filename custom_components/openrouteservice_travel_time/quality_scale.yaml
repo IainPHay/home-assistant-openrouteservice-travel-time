@@ -1,0 +1,154 @@
+rules:
+  # Bronze
+  action-setup:
+    status: exempt
+    comment: The integration does not provide custom actions.
+  appropriate-polling:
+    status: todo
+    comment: The first coordinator will use a conservative approximately five-minute provider polling interval.
+  brands:
+    status: todo
+    comment: Add and validate local custom-integration brand assets before the first beta.
+  common-modules:
+    status: todo
+    comment: Coordinator and shared entity patterns will be introduced with the first functional vertical slice.
+  config-flow-test-coverage:
+    status: todo
+    comment: Config flow implementation and complete branch coverage are part of the first functional vertical slice.
+  config-flow:
+    status: todo
+    comment: UI-only setup is required before the first beta.
+  dependency-transparency:
+    status: done
+    comment: The manifest has no third-party Python requirements; the integration will use Home Assistant's aiohttp facilities directly.
+  docs-actions:
+    status: exempt
+    comment: The integration does not provide custom actions.
+  docs-conditions:
+    status: exempt
+    comment: The integration does not provide custom conditions.
+  docs-high-level-description: done
+  docs-installation-instructions: done
+  docs-removal-instructions: done
+  docs-triggers:
+    status: exempt
+    comment: The integration does not provide custom triggers.
+  entity-event-setup:
+    status: exempt
+    comment: Route entities will not subscribe directly to external events.
+  entity-unique-id:
+    status: todo
+    comment: Unique IDs will be implemented with the sensor platform.
+  has-entity-name:
+    status: todo
+    comment: Route entities will use has_entity_name when implemented.
+  runtime-data:
+    status: todo
+    comment: Typed ConfigEntry.runtime_data will be introduced with the coordinator/API client.
+  test-before-configure:
+    status: todo
+    comment: The config flow must validate the API key before creating an entry.
+  test-before-setup:
+    status: todo
+    comment: Initial coordinator refresh must validate that the configured route can be set up.
+  unique-config-entry:
+    status: todo
+    comment: Duplicate route configuration will be prevented once the route config flow exists.
+
+  # Silver
+  action-exceptions:
+    status: exempt
+    comment: The integration has no service actions or controllable entity actions.
+  config-entry-unloading:
+    status: todo
+    comment: Clean coordinator/platform unload will be implemented with the first runtime slice.
+  docs-configuration-parameters:
+    status: todo
+    comment: The README documents the intended parameters; mark done only after the implemented flow exactly matches them.
+  docs-installation-parameters:
+    status: todo
+    comment: Mark done after the functional config flow and API-key validation match the documented setup.
+  entity-unavailable:
+    status: todo
+    comment: Duration and Distance will become unavailable when a trustworthy route cannot be calculated.
+  integration-owner: done
+  log-when-unavailable:
+    status: todo
+    comment: Coordinator error/recovery logging will be implemented with provider error classification.
+  parallel-updates:
+    status: todo
+    comment: Sensor platform parallel-update semantics will be specified when the platform is implemented.
+  reauthentication-flow:
+    status: todo
+    comment: Confirmed credential failures must start Home Assistant reauthentication.
+  test-coverage:
+    status: todo
+    comment: CI enforces 95 percent already; mark done once functional integration modules remain above that floor.
+
+  # Gold
+  devices:
+    status: todo
+    comment: Each configured route will be represented as one logical service device.
+  diagnostics:
+    status: todo
+    comment: Diagnostics must redact the API key and avoid precise moving-person coordinates.
+  discovery:
+    status: exempt
+    comment: Routes are user-configured cloud-service resources and are not network-discoverable.
+  discovery-update-info:
+    status: exempt
+    comment: There is no discoverable network address or connection information to update.
+  docs-data-update: done
+  docs-examples:
+    status: todo
+    comment: Add a validated automation/blueprint after the Duration entity is live-tested.
+  docs-known-limitations: done
+  docs-supported-devices:
+    status: exempt
+    comment: The integration does not integrate physical devices; configured routes are logical service devices.
+  docs-supported-functions: done
+  docs-troubleshooting:
+    status: todo
+    comment: Expand troubleshooting with real failure modes after the first live Home Assistant validation.
+  docs-use-cases: done
+  dynamic-devices:
+    status: exempt
+    comment: The v0.1 model is one logical route device per config entry; devices are not dynamically added within an entry.
+  entity-category:
+    status: todo
+    comment: Apply categories to any future diagnostic entities; primary Duration and Distance sensors are not diagnostic.
+  entity-device-class:
+    status: todo
+    comment: Duration and Distance device classes will be applied in sensor.py.
+  entity-disabled-by-default:
+    status: exempt
+    comment: The initial integration has only two primary route sensors and neither is low-value or noisy.
+  entity-translations:
+    status: todo
+    comment: Translation keys are scaffolded; mark done when translated route entities are implemented.
+  exception-translations:
+    status: todo
+    comment: Runtime/config-flow exceptions will use translation keys.
+  icon-translations:
+    status: todo
+    comment: Entity icon keys are scaffolded; mark done when the entity descriptions use the translation/icon keys.
+  reconfiguration-flow:
+    status: todo
+    comment: Route settings must be reconfigurable through the UI.
+  repair-issues:
+    status: exempt
+    comment: No current failure mode requires a Repair; authentication uses reauth and transient/provider failures recover automatically.
+  stale-devices:
+    status: exempt
+    comment: One logical route device is tied directly to each config entry and is removed with that entry.
+
+  # Platinum
+  async-dependency:
+    status: done
+    comment: The integration intentionally has no external client dependency and all planned network I/O is asynchronous.
+  inject-websession:
+    status: todo
+    comment: The API client will receive Home Assistant's shared aiohttp ClientSession.
+  strict-typing:
+    status: done
+    comment: Strict mypy is enforced in CI for all current integration source and will remain a mandatory gate.

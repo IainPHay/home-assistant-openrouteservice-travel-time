@@ -1,0 +1,13 @@
+{
+  "title": "OpenRouteService Travel Time",
+  "entity": {
+    "sensor": {
+      "duration": {
+        "name": "Duration"
+      },
+      "distance": {
+        "name": "Distance"
+      }
+    }
+  }
+}

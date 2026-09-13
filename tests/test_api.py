@@ -186,3 +186,18 @@ def test_route_numbers_must_be_finite_non_negative(value: object) -> None:
 def test_route_numbers_accept_ints() -> None:
     """Integer provider values are normalised to floats."""
     assert _number(42, "distance") == 42.0
+
+
+async def test_route_http_failure_uses_provider_classifier() -> None:
+    """HTTP failures from a real client request use the provider classifier."""
+    session = FakeSession(
+        FakeResponse(429, '{"error":{"message":"Rate limit exceeded"}}')
+    )
+    client = OpenRouteServiceClient(session, "key")  # type: ignore[arg-type]
+
+    with pytest.raises(OpenRouteServiceRateLimitError):
+        await client.async_route(
+            Coordinates(55.1, -1.6),
+            Coordinates(55.2, -1.5),
+            "foot-walking",
+        )

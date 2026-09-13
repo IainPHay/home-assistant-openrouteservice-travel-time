@@ -20,6 +20,7 @@ from custom_components.openrouteservice_travel_time.api import (
     OpenRouteServiceResponseError,
 )
 from custom_components.openrouteservice_travel_time.config_flow import (
+    _async_validate_route,
     _error_key,
     _route_signature,
 )

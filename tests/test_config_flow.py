@@ -550,7 +550,7 @@ async def test_dynamic_reconfigure_prefills_both_entity_endpoints(hass) -> None:
 async def test_endpoint_step_without_pending_data_aborts(hass) -> None:
     """An invalid direct jump to endpoint collection aborts safely."""
     result = await _start_user_flow(hass)
-    flow = hass.config_entries.flow.async_get(result["flow_id"])
+    flow = hass.config_entries.flow._progress[result["flow_id"]]
     flow._pending_data = None
 
     result2 = await flow.async_step_endpoints()
@@ -594,7 +594,7 @@ async def test_reconfigure_endpoint_step_without_pending_data_aborts(hass) -> No
             "entry_id": entry.entry_id,
         },
     )
-    flow = hass.config_entries.flow.async_get(result["flow_id"])
+    flow = hass.config_entries.flow._progress[result["flow_id"]]
     flow._pending_data = None
 
     result2 = await flow.async_step_reconfigure_endpoints()

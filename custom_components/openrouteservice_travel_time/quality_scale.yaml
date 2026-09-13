@@ -13,8 +13,8 @@ rules:
     status: done
     comment: Provider, coordinator, models, endpoint resolution and shared device metadata are separated into focused modules.
   config-flow-test-coverage:
-    status: todo
-    comment: User-facing config-flow paths are tested, but config_flow.py coverage is not yet complete enough to mark this rule done.
+    status: done
+    comment: Config-flow setup, validation, duplicate, reauth, reconfigure and defensive paths are directly tested.
   config-flow:
     status: done
     comment: Setup is UI-only and supports fixed or person/device_tracker endpoints.

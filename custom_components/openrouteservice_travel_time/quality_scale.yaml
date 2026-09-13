@@ -7,8 +7,8 @@ rules:
     status: todo
     comment: The first coordinator will use a conservative approximately five-minute provider polling interval.
   brands:
-    status: todo
-    comment: Add and validate local custom-integration brand assets before the first beta.
+    status: done
+    comment: A local custom-integration brand icon is shipped in the integration's brand directory.
   common-modules:
     status: todo
     comment: Coordinator and shared entity patterns will be introduced with the first functional vertical slice.

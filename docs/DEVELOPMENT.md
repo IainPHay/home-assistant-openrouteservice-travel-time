@@ -12,13 +12,11 @@ A rule is marked `done` only when the implementation and supporting tests/docume
 
 ## Current custom-integration localisation rule
 
-Current Home Assistant developer documentation states that custom integrations should ship complete translations in `translations/<language>.json` and should not rely on Core's build-time `strings.json` mechanism.
-
-This repository therefore uses:
+Current Home Assistant custom integrations ship complete English UI content in:
 
 `custom_components/openrouteservice_travel_time/translations/en.json`
 
-and intentionally does not add `strings.json`.
+The project intentionally does not add a Core-style `strings.json` file.
 
 ## Validation gates
 
@@ -30,11 +28,13 @@ GitHub Actions runs:
 4. Home Assistant-native pytest with a 95% coverage floor;
 5. strict mypy.
 
-The coverage floor is a minimum, not a target to game. Config flow branches, provider error paths, lifecycle handling and privacy/redaction behaviour require direct tests.
+Repository metadata required by HACS is also maintained: description, topics, licence and local brand asset.
+
+The coverage floor is a minimum, not a target to game. Config-flow branches, provider error paths, lifecycle handling, endpoint trust rules and privacy/redaction behaviour receive direct tests.
 
 ## Test policy
 
-Committed tests use synthetic coordinates and mocked HTTP.
+Committed tests use synthetic coordinates and mocked provider HTTP.
 
 Do not commit:
 
@@ -43,21 +43,40 @@ Do not commit:
 - captured responses containing secrets/personal location;
 - tests that rely on the live hosted API.
 
-Real provider/Home Assistant validation is a separate pre-release step.
+Dynamic-location tests use synthetic `person` and `device_tracker` states.
+
+Real provider/Home Assistant validation is a separate pre-release gate.
 
 ## Development sequence
 
-1. Repository/quality scaffold.
-2. Small async openrouteservice API client.
-3. API-key validation.
-4. Fixed-coordinate route config.
-5. `foot-walking` coordinator.
-6. Duration and Distance sensors.
-7. Dynamic `person` / `device_tracker` resolution.
-8. reconfigure and reauthentication flows.
-9. diagnostics/privacy.
-10. real HACS/Home Assistant validation.
-11. only then broaden route profiles.
+Completed in the current branch:
+
+1. repository/quality scaffold;
+2. small async openrouteservice API client;
+3. API-key validation;
+4. fixed-coordinate route configuration;
+5. `foot-walking` coordinator;
+6. Duration and Distance sensors;
+7. dynamic `person` / `device_tracker` endpoint resolution;
+8. reconfiguration and reauthentication;
+9. privacy-safe diagnostics;
+10. HACS/Hassfest/typing/test CI gates.
+
+Next:
+
+11. install the integration into a real Home Assistant test instance through HACS/custom repository;
+12. validate fixed and moving-person walking routes against the live provider;
+13. validate reload, restart, reauth and unavailable/recovery behaviour;
+14. validate BODS Bus Tracker consumption of the Duration sensor;
+15. only then broaden route profiles.
+
+## Endpoint-state principle
+
+The integration follows a strict rule:
+
+> Do not automate behaviour until state is trusted.
+
+For dynamic endpoints, missing, unavailable or coordinate-less entities produce an unavailable route. Do not add a hidden fallback to Home Assistant home coordinates, cached coordinates or straight-line estimates.
 
 ## Release discipline
 
@@ -66,6 +85,8 @@ For every release:
 - keep `manifest.json` and `const.py` versions identical;
 - update `CHANGELOG.md`;
 - keep all CI gates green;
-- document any new setting/entity;
+- document every new setting/entity;
+- keep endpoint identity stable across movement;
 - review diagnostics for secrets/location exposure;
-- validate upgrade/reload behaviour in Home Assistant.
+- validate upgrade/reload behaviour in Home Assistant;
+- test the released HACS artefact, not only a working-tree copy.

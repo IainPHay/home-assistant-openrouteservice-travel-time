@@ -1,36 +1,38 @@
 # OpenRouteService Travel Time for Home Assistant
 
-[![Version](https://img.shields.io/badge/version-0.1.0--alpha.1-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.0--alpha.2-blue.svg)](CHANGELOG.md)
 [![HACS](https://img.shields.io/badge/HACS-custom-orange.svg)](https://www.hacs.xyz/)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.8%2B-41BDF5.svg)](https://www.home-assistant.io/)
 [![Validate](https://github.com/IainPHay/home-assistant-openrouteservice-travel-time/actions/workflows/validate.yml/badge.svg)](https://github.com/IainPHay/home-assistant-openrouteservice-travel-time/actions/workflows/validate.yml)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-A modern standalone Home Assistant custom integration for [openrouteservice](https://openrouteservice.org/) route duration and distance.
+A standalone Home Assistant custom integration for [openrouteservice](https://openrouteservice.org/) route duration and distance.
 
-The integration is designed for normal Home Assistant use: commute times, walking or cycling routes, station travel times, dashboards and automations. BODS Bus Tracker can consume its Duration sensor, but **BODS is only one downstream consumer** and there is no runtime dependency between the projects.
+It is designed for ordinary Home Assistant use: walking-time sensors, commute routes, station/stop travel times, dashboards and automations. BODS Bus Tracker can consume its Duration sensor, but **BODS is only one downstream consumer** and there is no runtime dependency between the projects.
 
-> **Development status:** pre-release. The repository scaffold is in place, but the first functional routing vertical slice is still being implemented.
+> **Development status:** pre-release. The walking route implementation, dynamic Home Assistant location endpoints and quality gates are in place. Real Home Assistant/HACS installation testing is the next release gate.
 
-## Planned first beta
+## Current alpha
 
-The first beta deliberately starts small:
+The current `0.1.0-alpha.2` implementation provides:
 
-- Home Assistant UI configuration;
+- Home Assistant UI-only configuration;
 - one route per config entry;
 - API key stored in the config entry;
-- fixed coordinates or Home Assistant `person` / `device_tracker` locations;
-- `foot-walking` routing first;
-- **Duration** sensor using seconds natively;
-- **Distance** sensor using a standard Home Assistant distance unit;
-- approximately five-minute polling;
+- fixed map locations;
+- dynamic `person` and `device_tracker` endpoints;
+- `foot-walking` routing;
+- **Duration** sensor using native seconds;
+- **Distance** sensor using native metres;
+- five-minute provider polling;
 - normal Home Assistant manual entity refresh;
 - reconfiguration and reauthentication;
 - clean unload;
-- translated UI, errors and entity names;
-- privacy-safe diagnostics.
+- translated UI, errors, selector options and entity names;
+- privacy-safe diagnostics;
+- HACS/Hassfest validation, strict typing and Home Assistant-native tests.
 
-Cycling, driving and other routing profiles will follow only after walking has been validated end-to-end.
+Cycling, driving and other routing profiles will be added only after the walking implementation has been validated end-to-end in a real Home Assistant instance.
 
 ## Architecture
 
@@ -49,7 +51,7 @@ The hosted API implementation targets:
 
 `https://api.heigit.org/openrouteservice/v2/`
 
-The deprecated `api.openrouteservice.org` host will not be used.
+The deprecated `api.openrouteservice.org` host is not used.
 
 See [Architecture](docs/ARCHITECTURE.md) for the project contract.
 
@@ -66,7 +68,7 @@ The target is:
 
 Because this is a third-party custom integration, the repository does **not** claim an official Home Assistant Core quality tier.
 
-The living rule-by-rule ledger is [`quality_scale.yaml`](custom_components/openrouteservice_travel_time/quality_scale.yaml). CI is intended to enforce the same engineering style as BODS Bus Tracker:
+The living rule-by-rule ledger is [`quality_scale.yaml`](custom_components/openrouteservice_travel_time/quality_scale.yaml). CI follows the same engineering approach used for BODS Bus Tracker:
 
 - HACS validation;
 - Hassfest;
@@ -79,7 +81,7 @@ See [Development and quality](docs/DEVELOPMENT.md).
 
 ## Requirements
 
-For the first beta the expected requirements are:
+The current alpha expects:
 
 - Home Assistant 2026.8 or newer;
 - HACS for HACS installation, or manual access to `custom_components`;
@@ -89,7 +91,7 @@ For the first beta the expected requirements are:
 
 1. Create an account through [openrouteservice](https://openrouteservice.org/).
 2. Create/copy an API key from the provider dashboard.
-3. Keep the key private. The integration will store it in the Home Assistant config entry and redact it from diagnostics.
+3. Keep the key private. The integration stores it in the Home Assistant config entry and redacts it from diagnostics.
 
 Do not publish an API key in GitHub issues or diagnostic attachments.
 
@@ -97,7 +99,7 @@ Do not publish an API key in GitHub issues or diagnostic attachments.
 
 The repository is structured as a HACS custom integration repository.
 
-Until the first beta is released, installation is intended for development/testing only.
+Until the first beta is released, installation is intended for development/testing.
 
 1. Open **HACS** in Home Assistant.
 2. Open the three-dot menu and choose **Custom repositories**.
@@ -113,8 +115,6 @@ You can open the repository in HACS with:
 
 ## Manual installation
 
-Once a functional beta is available:
-
 1. Download the repository/release.
 2. Copy `custom_components/openrouteservice_travel_time/` to `/config/custom_components/openrouteservice_travel_time/`.
 3. Restart Home Assistant.
@@ -123,101 +123,183 @@ Once a functional beta is available:
 
 ## Configuration
 
-The intended first-beta route configuration is:
+Setup is deliberately explicit.
 
-| Setting | Purpose |
-| --- | --- |
-| API key | Authenticates requests to the hosted openrouteservice API. |
-| Route name | Human-readable name for the configured route/device. |
-| Origin | Fixed coordinates or a Home Assistant entity exposing latitude/longitude. |
-| Destination | Fixed coordinates or a Home Assistant entity exposing latitude/longitude. |
-| Profile | Initially `foot-walking`. |
-| Poll interval | Conservative provider refresh interval, initially about five minutes. |
+### Step 1 — route identity and endpoint types
 
-Dynamic entities are resolved at update time. The integration will not silently substitute Home Assistant's home coordinates when configured coordinates are missing.
+Enter:
+
+- the openrouteservice API key;
+- a route name;
+- whether the **origin** is a fixed location or a `person` / `device_tracker`;
+- whether the **destination** is a fixed location or a `person` / `device_tracker`.
+
+### Step 2 — route endpoints
+
+For each fixed endpoint, choose a map location.
+
+For each dynamic endpoint, select a Home Assistant `person` or `device_tracker` entity. The selected entity must currently expose usable latitude and longitude so setup can validate the route.
+
+The API key and route are tested before Home Assistant creates the config entry.
+
+### Runtime behaviour of dynamic endpoints
+
+Dynamic entity coordinates are resolved again immediately before **every** provider update. They are not copied into the config entry.
+
+If a selected entity:
+
+- is missing;
+- is `unknown` or `unavailable`;
+- stops exposing latitude/longitude; or
+- exposes invalid coordinates,
+
+the route becomes unavailable. The integration does **not** silently substitute Home Assistant's home coordinates or the last known route.
+
+This follows the project rule that behaviour must not be automated from untrusted state.
 
 ## Entities
 
-The initial route device will expose:
+Each route is represented as one logical service device with two primary entities:
 
 | Entity | Home Assistant semantics |
 | --- | --- |
-| **Duration** | `SensorDeviceClass.DURATION`, native seconds. |
-| **Distance** | `SensorDeviceClass.DISTANCE`, standard native distance unit. |
+| **Duration** | `SensorDeviceClass.DURATION`, native unit seconds. |
+| **Distance** | `SensorDeviceClass.DISTANCE`, native unit metres. |
 
-Values must be numeric, finite and non-negative. If a trustworthy route cannot be calculated, the relevant route entities become unavailable rather than exposing a guessed value.
+Values are numeric, finite and non-negative. If a trustworthy route cannot be calculated, the coordinator update fails and the route entities become unavailable rather than exposing a guessed value.
 
 ## Data updates
 
-The first release will use a `DataUpdateCoordinator` with a conservative default interval of approximately five minutes.
+The integration uses a `DataUpdateCoordinator` with a five-minute provider polling interval.
 
-A normal Home Assistant `homeassistant.update_entity` refresh remains supported. Every provider refresh can consume openrouteservice quota, so the integration will not poll at high frequency merely because a downstream consumer updates more often.
+A normal Home Assistant `homeassistant.update_entity` refresh is supported. Every provider refresh can consume openrouteservice quota, so the integration does not poll rapidly just because a downstream consumer updates more often.
+
+For moving-person use cases, the person's/device tracker's **current coordinates are resolved at request time**, not at setup time.
 
 ## Error and recovery behaviour
 
-The integration will distinguish provider failures rather than collapsing them into a generic authentication error:
+Failures are deliberately classified:
 
 - confirmed invalid credentials → Home Assistant reauthentication;
-- rate limiting → transient update failure/backoff, without invalidating credentials;
-- timeout/network/server failure → transient coordinator failure;
+- HTTP 429 → transient update failure; credentials remain valid;
+- timeout/network/server failure → transient update failure;
 - missing or invalid dynamic coordinates → route unavailable;
 - no route found → unavailable, without straight-line or estimated substitution;
-- HTTP 403 → inspect provider response before deciding whether credentials are invalid.
+- HTTP 403 → provider response is inspected; an ambiguous 403 does not automatically invalidate the API key;
+- malformed provider response → unavailable rather than returning guessed values.
 
-Normal transient recovery must not require reconfiguration.
+Normal transient recovery does not require reconfiguration.
 
 ## Use cases
 
 Typical uses include:
 
 - walking time from a moving person to a bus or rail stop;
-- commute duration from home to work;
-- travel time to an appointment;
-- distance and duration cards on a Home Assistant dashboard;
-- automations that react to a route duration threshold;
+- walking time from a fixed home location to a destination;
+- commute duration;
+- route distance/duration cards on a dashboard;
+- automations based on a standard duration sensor;
 - provider-neutral routed walking input for BODS Bus Tracker.
 
-## Example automation
+### BODS Bus Tracker
 
-Once the Duration sensor exists, it can be consumed like any other Home Assistant duration sensor. For example, an automation can react when a route becomes short enough to leave for a connection.
+A common configuration is:
 
-The repository will add a ready-to-import generic example/blueprint once entity behaviour has been validated in a real Home Assistant instance.
+- **Origin:** `person.<name>` or the user's phone `device_tracker`;
+- **Destination:** fixed coordinates of the bus stop;
+- **Profile:** `foot-walking`.
+
+Then select this integration's **Duration** entity as the BODS routed walking-time sensor. BODS remains independent of openrouteservice credentials and API behaviour.
+
+### Dashboard example
+
+Replace the entity IDs with the two entities created for your route:
+
+```yaml
+type: entities
+title: Route to bus stop
+entities:
+  - entity: sensor.route_to_bus_stop_duration
+  - entity: sensor.route_to_bus_stop_distance
+```
 
 ## Privacy and data handling
 
-A directions request necessarily sends the configured origin and destination coordinates to openrouteservice.
+A directions request necessarily sends the resolved origin and destination coordinates to openrouteservice.
 
-The integration will minimise secondary exposure:
+The integration minimises secondary exposure:
 
 - API keys remain in the config entry;
 - API keys are redacted from diagnostics;
-- precise moving-person coordinates are not copied into Recorder attributes;
-- precise moving-person coordinates are excluded from downloadable diagnostics unless a future feature has a compelling, documented reason;
+- fixed endpoint coordinates are redacted from diagnostics;
+- dynamic entity coordinates are resolved in memory at update time;
+- precise moving-person coordinates are not stored in entity attributes;
+- precise moving-person coordinates are not written into downloadable diagnostics;
 - no project analytics or telemetry are planned.
 
-## Known limitations
-
-For the first beta:
-
-- one route per config entry;
-- walking is the only supported profile initially;
-- route calculation depends on the hosted openrouteservice service and account quota;
-- dynamic Home Assistant entities must expose usable latitude/longitude;
-- the integration does not infer or substitute a route when the provider cannot calculate one;
-- no geocoding/address search is planned for the first beta.
+Dynamic entity IDs are used only to retrieve state from the local Home Assistant instance.
 
 ## Troubleshooting
 
-The integration is not yet ready for normal troubleshooting. During development:
+### Route entities are unavailable
 
-- check the GitHub Actions validation result;
-- include the Home Assistant version and integration version when reporting a problem;
-- include downloaded integration diagnostics once diagnostics are implemented;
-- never include an API key or unredacted precise personal coordinates in an issue.
+Check the configured dynamic `person` / `device_tracker` entity first. It must exist and expose numeric `latitude` and `longitude` attributes. An `unknown` or `unavailable` entity intentionally makes the route unavailable.
+
+### API key rejected
+
+A confirmed authentication rejection starts Home Assistant reauthentication. Enter a replacement openrouteservice API key there; the route configuration is retained.
+
+### HTTP 403 / access forbidden
+
+A 403 is not automatically treated as a bad key because provider access/policy failures can also use that status. Check the Home Assistant log and provider account/service status before replacing credentials.
+
+### Rate limiting
+
+HTTP 429 is treated as a transient provider failure. Allow the normal coordinator interval to retry rather than repeatedly forcing manual updates.
+
+### No route
+
+The integration does not substitute straight-line distance or an estimated duration when openrouteservice cannot calculate a route.
+
+### Reporting an issue
+
+Include:
+
+- Home Assistant version;
+- integration version;
+- downloaded integration diagnostics;
+- relevant Home Assistant log messages.
+
+Never include an API key or unredacted precise personal coordinates.
+
+## Known limitations
+
+For the current alpha:
+
+- one route per config entry;
+- walking is the only supported routing profile;
+- the polling interval is currently fixed at five minutes;
+- route calculation depends on the hosted openrouteservice service and account quota;
+- dynamic endpoints are limited to `person` and `device_tracker`;
+- dynamic entities must expose usable latitude/longitude;
+- no geocoding/address search is provided;
+- the integration does not infer or substitute a route when provider/location state is not trustworthy.
+
+## Reconfiguration
+
+Open **Settings → Devices & services → OpenRouteService Travel Time**, choose the route and use **Reconfigure**.
+
+You can change:
+
+- route name;
+- origin type;
+- origin location/entity;
+- destination type;
+- destination location/entity.
+
+The existing API key is retained.
 
 ## Removing the integration
-
-Once the config flow is implemented:
 
 1. Open **Settings → Devices & services → OpenRouteService Travel Time**.
 2. Remove each route config entry you no longer want.

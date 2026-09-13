@@ -2,7 +2,7 @@
 
 ## Purpose
 
-OpenRouteService Travel Time is a standalone Home Assistant custom integration. It converts an openrouteservice route calculation into normal Home Assistant route entities without embedding downstream application logic.
+OpenRouteService Travel Time is a standalone Home Assistant custom integration. It converts an openrouteservice route calculation into normal Home Assistant entities without embedding downstream application logic.
 
 ## Repository and domain
 
@@ -20,12 +20,12 @@ This integration owns:
 - openrouteservice HTTP requests;
 - origin and destination resolution;
 - routing profile;
-- polling;
+- provider polling;
 - provider error classification.
 
 Consumers receive normal Home Assistant entity states. They do not own provider credentials or API behaviour.
 
-BODS Bus Tracker is one validation consumer. It must remain provider-neutral and read only a standard duration sensor.
+BODS Bus Tracker is one validation consumer. It remains provider-neutral and reads only a standard duration sensor.
 
 ## API baseline
 
@@ -41,9 +41,9 @@ Authentication uses the `Authorization` header.
 
 Coordinates use `[longitude, latitude]` order.
 
-For the JSON directions response the route summary provides distance in metres and duration in seconds.
+For the JSON directions response, the route summary provides distance in metres and duration in seconds.
 
-The HTTP layer should remain small and isolated so tests can mock it without a third-party Python SDK.
+The HTTP layer is deliberately small and uses Home Assistant's shared async aiohttp session instead of a separate third-party Python SDK.
 
 ## v0.1 route model
 
@@ -53,71 +53,127 @@ A route contains:
 
 - API key;
 - human-readable route name;
-- origin;
-- destination;
-- routing profile;
-- polling settings.
+- origin endpoint;
+- destination endpoint;
+- routing profile.
 
-Origin/destination may be fixed coordinates or a Home Assistant entity with usable latitude/longitude. Dynamic entities are resolved at update time.
+Polling is currently fixed at five minutes.
 
-Home Assistant home coordinates are never used as an implicit fallback.
+### Endpoint representation
+
+An endpoint is either:
+
+1. **fixed** — explicit latitude/longitude selected in the UI; or
+2. **entity** — a Home Assistant `person` or `device_tracker` entity ID.
+
+Fixed endpoints are stored in canonical form:
+
+```json
+{
+  "type": "fixed",
+  "latitude": 55.1,
+  "longitude": -1.6
+}
+```
+
+Dynamic endpoints are stored as references, not coordinates:
+
+```json
+{
+  "type": "entity",
+  "entity_id": "person.example"
+}
+```
+
+The alpha.2 parser also accepts the alpha.1 direct latitude/longitude mapping so development installs are not unnecessarily broken.
+
+### Dynamic endpoint resolution
+
+For an entity endpoint, the coordinator reads the entity immediately before each provider request.
+
+The state is trusted only when:
+
+- the entity exists;
+- its state is neither `unknown` nor `unavailable`;
+- it exposes numeric latitude and longitude;
+- both coordinates are finite and within geographic ranges.
+
+No Home Assistant home-coordinate fallback is permitted.
+
+No last-known route is substituted when current location state is untrustworthy.
+
+## Stable route identity
+
+Duplicate detection must not use the current coordinates of a moving person.
+
+The config-entry unique ID is therefore derived from:
+
+- route profile;
+- fixed endpoint coordinates for fixed endpoints;
+- entity IDs for dynamic endpoints.
+
+This keeps identity stable while the person/device tracker moves.
 
 ## Runtime design
 
-The intended runtime pattern is:
-
-1. config flow validates credentials and route input;
-2. typed ConfigEntry runtime data owns the API client and coordinator;
-3. DataUpdateCoordinator resolves current coordinates and performs one route request;
-4. Duration and Distance entities read coordinator data;
-5. reconfiguration updates route settings;
-6. confirmed credential rejection initiates reauthentication;
-7. unload releases platforms/runtime work cleanly.
-
-The client uses Home Assistant's shared async aiohttp session.
+1. Config flow collects route name and endpoint types.
+2. A second config-flow step collects fixed locations or entity references.
+3. The current endpoint coordinates and API access are validated before the entry is created.
+4. Typed `ConfigEntry.runtime_data` owns the API client and coordinator.
+5. `DataUpdateCoordinator` resolves current coordinates immediately before each provider request.
+6. Duration and Distance entities read coordinator data.
+7. Reconfiguration can change endpoint types and references.
+8. Confirmed credential rejection initiates Home Assistant reauthentication.
+9. Clean unload delegates to Home Assistant platform lifecycle handling.
 
 ## Entity contract
 
 ### Duration
 
-- Sensor device class: duration;
+- sensor device class: duration;
 - native unit: seconds;
 - numeric, finite, non-negative;
-- unavailable when no trustworthy route exists.
+- unavailable when the latest coordinator update is not trustworthy.
 
 ### Distance
 
-- Sensor device class: distance;
-- native unit: metres unless implementation evidence supports a better standard native choice;
+- sensor device class: distance;
+- native unit: metres;
 - numeric, finite, non-negative;
-- unavailable when no trustworthy route exists.
+- unavailable when the latest coordinator update is not trustworthy.
+
+Both entities belong to one logical service device representing the configured route.
 
 ## Provider error policy
 
-Errors are classified deliberately:
+Errors remain deliberately distinct:
 
-- confirmed invalid credentials → reauthentication;
-- HTTP 429 → transient rate-limit failure/backoff;
-- timeout/network/5xx → transient update failure;
-- invalid/missing dynamic coordinates → route unavailable;
-- no route → unavailable;
-- HTTP 403 → inspect response; do not assume invalid credentials.
+- confirmed HTTP 401 or unambiguous invalid-key response → reauthentication;
+- ambiguous HTTP 403 → access-forbidden/transient failure, not forced reauthentication;
+- HTTP 429 → transient rate-limit failure;
+- timeout/network failure → transient update failure;
+- provider/server/malformed-response failure → transient update failure;
+- invalid or missing dynamic coordinates → route unavailable;
+- no route → route unavailable.
 
-One failed route update must not crash Home Assistant.
+Non-JSON provider/proxy error bodies are tolerated for HTTP-status classification. A successful response must still contain valid expected JSON.
+
+One failed update must not crash Home Assistant.
 
 ## Privacy
 
-Precise dynamic coordinates are operational inputs, not diagnostic data.
+Precise coordinates are operational inputs, not diagnostic data.
 
-Do not copy them into:
+Dynamic coordinates are resolved in memory and are not copied into:
 
+- config-entry data;
 - entity attributes;
 - routine logs;
 - downloadable diagnostics;
 - Recorder history.
 
-Diagnostics redact the API key.
+Fixed coordinates and the API key are redacted from diagnostics.
 
 ## Expansion rule
 
-Walking is the first vertical slice. Do not add cycling/driving/hiking/wheelchair profiles until walking works end-to-end in a real Home Assistant installation and the quality gates remain green.
+Walking remains the first vertical slice. Cycling/driving/hiking/wheelchair profiles should be added only after the walking implementation has been installed and validated end-to-end in a real Home Assistant instance with quality gates green.

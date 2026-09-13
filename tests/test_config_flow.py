@@ -8,7 +8,7 @@ import pytest
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_API_KEY, CONF_NAME
-from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.data_entry_flow import FlowResultType, InvalidData
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.openrouteservice_travel_time.api import (
@@ -110,7 +110,7 @@ async def test_user_form(hass) -> None:
 
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    assert result.get("errors") is None
 
 
 async def test_fixed_route_user_success(hass) -> None:
@@ -279,16 +279,14 @@ async def test_invalid_dynamic_entity_domain_stays_on_endpoint_form(hass) -> Non
         _start_data(origin_type=ENDPOINT_ENTITY),
     )
 
-    result2 = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {
-            CONF_ORIGIN_ENTITY: "sensor.latitude",
-            CONF_DESTINATION_LOCATION: DESTINATION,
-        },
-    )
-
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_location"}
+    with pytest.raises(InvalidData):
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                CONF_ORIGIN_ENTITY: "sensor.latitude",
+                CONF_DESTINATION_LOCATION: DESTINATION,
+            },
+        )
 
 
 async def test_reauth_success(hass) -> None:

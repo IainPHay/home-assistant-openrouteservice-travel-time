@@ -4,6 +4,13 @@ All notable changes to OpenRouteService Travel Time are documented here.
 
 The project uses semantic versioning for integration releases.
 
+## 0.1.0-alpha.3 — development
+
+### Fixed
+
+- Fixed a real Home Assistant config-flow rendering failure where a required fixed destination `LocationSelector` had no initial value, causing the endpoint form to appear blank in the frontend before the selector could render.
+- Added a regression test requiring both fixed-location selectors to supply valid Home Assistant location defaults.
+
 ## 0.1.0-alpha.2 — development
 
 ### Added

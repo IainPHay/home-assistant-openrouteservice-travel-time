@@ -4,20 +4,20 @@ rules:
     status: exempt
     comment: The integration does not provide custom actions.
   appropriate-polling:
-    status: todo
-    comment: The first coordinator will use a conservative approximately five-minute provider polling interval.
+    status: done
+    comment: The coordinator polls the hosted provider every five minutes; manual entity refresh remains available.
   brands:
     status: done
     comment: A local custom-integration brand icon is shipped in the integration's brand directory.
   common-modules:
-    status: todo
-    comment: Coordinator and shared entity patterns will be introduced with the first functional vertical slice.
+    status: done
+    comment: Provider, coordinator, models, endpoint resolution and shared device metadata are separated into focused modules.
   config-flow-test-coverage:
     status: todo
-    comment: Config flow implementation and complete branch coverage are part of the first functional vertical slice.
+    comment: User-facing config-flow paths are tested, but config_flow.py coverage is not yet complete enough to mark this rule done.
   config-flow:
-    status: todo
-    comment: UI-only setup is required before the first beta.
+    status: done
+    comment: Setup is UI-only and supports fixed or person/device_tracker endpoints.
   dependency-transparency:
     status: done
     comment: The manifest has no third-party Python requirements; the integration will use Home Assistant's aiohttp facilities directly.
@@ -37,61 +37,61 @@ rules:
     status: exempt
     comment: Route entities will not subscribe directly to external events.
   entity-unique-id:
-    status: todo
-    comment: Unique IDs will be implemented with the sensor platform.
+    status: done
+    comment: Duration and Distance have stable per-config-entry unique IDs.
   has-entity-name:
-    status: todo
-    comment: Route entities will use has_entity_name when implemented.
+    status: done
+    comment: Route sensors use has_entity_name with translated entity names.
   runtime-data:
-    status: todo
-    comment: Typed ConfigEntry.runtime_data will be introduced with the coordinator/API client.
+    status: done
+    comment: Typed ConfigEntry.runtime_data owns the client and coordinator.
   test-before-configure:
-    status: todo
-    comment: The config flow must validate the API key before creating an entry.
+    status: done
+    comment: Current endpoint coordinates and provider access are validated before a config entry is created.
   test-before-setup:
-    status: todo
-    comment: Initial coordinator refresh must validate that the configured route can be set up.
+    status: done
+    comment: Initial coordinator refresh verifies the configured route during setup.
   unique-config-entry:
-    status: todo
-    comment: Duplicate route configuration will be prevented once the route config flow exists.
+    status: done
+    comment: Stable route signatures prevent duplicate profile/endpoint-reference configurations.
 
   # Silver
   action-exceptions:
     status: exempt
     comment: The integration has no service actions or controllable entity actions.
   config-entry-unloading:
-    status: todo
-    comment: Clean coordinator/platform unload will be implemented with the first runtime slice.
+    status: done
+    comment: Sensor platforms unload through Home Assistant's config-entry lifecycle.
   docs-configuration-parameters:
-    status: todo
-    comment: The README documents the intended parameters; mark done only after the implemented flow exactly matches them.
+    status: done
+    comment: README documents the API key, route name, fixed/dynamic endpoint types and fixed polling interval.
   docs-installation-parameters:
-    status: todo
-    comment: Mark done after the functional config flow and API-key validation match the documented setup.
+    status: done
+    comment: README documents HACS/manual installation and API-key setup.
   entity-unavailable:
-    status: todo
-    comment: Duration and Distance will become unavailable when a trustworthy route cannot be calculated.
+    status: done
+    comment: Coordinator failures make route entities unavailable instead of exposing guessed values.
   integration-owner: done
   log-when-unavailable:
-    status: todo
-    comment: Coordinator error/recovery logging will be implemented with provider error classification.
+    status: done
+    comment: DataUpdateCoordinator reports update failure and recovery while provider/location failures remain classified.
   parallel-updates:
-    status: todo
-    comment: Sensor platform parallel-update semantics will be specified when the platform is implemented.
+    status: done
+    comment: Sensor platform declares PARALLEL_UPDATES = 0 because updates are coordinator-driven.
   reauthentication-flow:
-    status: todo
-    comment: Confirmed credential failures must start Home Assistant reauthentication.
+    status: done
+    comment: Confirmed authentication rejection starts Home Assistant reauthentication; ambiguous 403 responses do not.
   test-coverage:
-    status: todo
-    comment: CI enforces 95 percent already; mark done once functional integration modules remain above that floor.
+    status: done
+    comment: CI enforces at least 95 percent integration statement coverage.
 
   # Gold
   devices:
-    status: todo
-    comment: Each configured route will be represented as one logical service device.
+    status: done
+    comment: Each configured route is represented as one logical service device.
   diagnostics:
-    status: todo
-    comment: Diagnostics must redact the API key and avoid precise moving-person coordinates.
+    status: done
+    comment: Diagnostics redact credentials and both endpoint definitions, preventing precise coordinate disclosure.
   discovery:
     status: exempt
     comment: Routes are user-configured cloud-service resources and are not network-discoverable.
@@ -100,41 +100,41 @@ rules:
     comment: There is no discoverable network address or connection information to update.
   docs-data-update: done
   docs-examples:
-    status: todo
-    comment: Add a validated automation/blueprint after the Duration entity is live-tested.
+    status: done
+    comment: README documents the BODS dynamic-walking use case and a dashboard example.
   docs-known-limitations: done
   docs-supported-devices:
     status: exempt
     comment: The integration does not integrate physical devices; configured routes are logical service devices.
   docs-supported-functions: done
   docs-troubleshooting:
-    status: todo
-    comment: Expand troubleshooting with real failure modes after the first live Home Assistant validation.
+    status: done
+    comment: README covers unavailable location entities, authentication, 403, rate limiting and no-route behaviour.
   docs-use-cases: done
   dynamic-devices:
     status: exempt
     comment: The v0.1 model is one logical route device per config entry; devices are not dynamically added within an entry.
   entity-category:
-    status: todo
-    comment: Apply categories to any future diagnostic entities; primary Duration and Distance sensors are not diagnostic.
+    status: exempt
+    comment: The integration exposes only two primary route sensors; there are no diagnostic/configuration entities requiring a category.
   entity-device-class:
-    status: todo
-    comment: Duration and Distance device classes will be applied in sensor.py.
+    status: done
+    comment: Duration and Distance use the standard Home Assistant duration and distance device classes.
   entity-disabled-by-default:
     status: exempt
     comment: The initial integration has only two primary route sensors and neither is low-value or noisy.
   entity-translations:
-    status: todo
-    comment: Translation keys are scaffolded; mark done when translated route entities are implemented.
+    status: done
+    comment: Sensor names are supplied through translation keys.
   exception-translations:
-    status: todo
-    comment: Runtime/config-flow exceptions will use translation keys.
+    status: done
+    comment: Config-entry authentication failure uses a translated exception key.
   icon-translations:
-    status: todo
-    comment: Entity icon keys are scaffolded; mark done when the entity descriptions use the translation/icon keys.
+    status: done
+    comment: Duration and Distance icons are supplied through icons.json translation keys.
   reconfiguration-flow:
-    status: todo
-    comment: Route settings must be reconfigurable through the UI.
+    status: done
+    comment: Route name, endpoint types and endpoint references can be changed through the UI while retaining credentials.
   repair-issues:
     status: exempt
     comment: No current failure mode requires a Repair; authentication uses reauth and transient/provider failures recover automatically.
@@ -147,8 +147,8 @@ rules:
     status: done
     comment: The integration intentionally has no external client dependency and all planned network I/O is asynchronous.
   inject-websession:
-    status: todo
-    comment: The API client will receive Home Assistant's shared aiohttp ClientSession.
+    status: done
+    comment: Config validation and runtime clients receive Home Assistant's shared aiohttp ClientSession.
   strict-typing:
     status: done
     comment: Strict mypy is enforced in CI for all current integration source and will remain a mandatory gate.

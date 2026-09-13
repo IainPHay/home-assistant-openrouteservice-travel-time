@@ -1,0 +1,111 @@
+{
+  "title": "OpenRouteService Travel Time",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add an OpenRouteService route",
+        "description": "Name the route and choose whether each endpoint is fixed or follows a Home Assistant person/device tracker.",
+        "data": {
+          "api_key": "OpenRouteService API key",
+          "name": "Route name",
+          "origin_type": "Origin type",
+          "destination_type": "Destination type"
+        },
+        "data_description": {
+          "api_key": "Create an API key in your openrouteservice account. The key is stored in the Home Assistant config entry and redacted from diagnostics.",
+          "name": "A friendly name for this route and its Home Assistant device.",
+          "origin_type": "Use a fixed map location or follow the current coordinates of a person/device tracker.",
+          "destination_type": "Use a fixed map location or follow the current coordinates of a person/device tracker."
+        }
+      },
+      "endpoints": {
+        "title": "Choose route endpoints",
+        "description": "Configure the origin and destination. Dynamic entities must currently expose latitude and longitude so the route can be validated before it is saved.",
+        "data": {
+          "origin_location": "Origin",
+          "origin_entity": "Origin entity",
+          "destination_location": "Destination",
+          "destination_entity": "Destination entity"
+        },
+        "data_description": {
+          "origin_location": "Select the fixed starting point on the map.",
+          "origin_entity": "Select a person or device tracker whose current coordinates will be resolved on every route update.",
+          "destination_location": "Select the fixed destination on the map.",
+          "destination_entity": "Select a person or device tracker whose current coordinates will be resolved on every route update."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reconnect to OpenRouteService",
+        "description": "OpenRouteService explicitly rejected the configured credential. Enter a replacement API key.",
+        "data": {
+          "api_key": "OpenRouteService API key"
+        }
+      },
+      "reconfigure": {
+        "title": "Configure route",
+        "description": "Change the route name or switch either endpoint between a fixed location and a Home Assistant location entity. The existing API key is retained.",
+        "data": {
+          "name": "Route name",
+          "origin_type": "Origin type",
+          "destination_type": "Destination type"
+        }
+      },
+      "reconfigure_endpoints": {
+        "title": "Configure route endpoints",
+        "description": "Choose the updated origin and destination. Dynamic entities must currently expose usable latitude and longitude.",
+        "data": {
+          "origin_location": "Origin",
+          "origin_entity": "Origin entity",
+          "destination_location": "Destination",
+          "destination_entity": "Destination entity"
+        },
+        "data_description": {
+          "origin_location": "Select the fixed starting point on the map.",
+          "origin_entity": "Select a person or device tracker whose current coordinates will be resolved on every route update.",
+          "destination_location": "Select the fixed destination on the map.",
+          "destination_entity": "Select a person or device tracker whose current coordinates will be resolved on every route update."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to OpenRouteService.",
+      "invalid_auth": "The OpenRouteService API key was explicitly rejected.",
+      "access_forbidden": "OpenRouteService refused this request. A 403 response is not treated as proof that the API key is invalid.",
+      "rate_limited": "OpenRouteService is rate limiting requests. Wait and try again later.",
+      "no_route": "OpenRouteService could not calculate a route between these locations.",
+      "invalid_response": "OpenRouteService returned an unexpected response.",
+      "invalid_location": "One of the configured route endpoints is invalid.",
+      "location_unavailable": "A selected person/device tracker does not currently expose usable coordinates.",
+      "unknown": "Unexpected error. Check the Home Assistant log for details."
+    },
+    "abort": {
+      "already_configured": "This route is already configured.",
+      "reauth_successful": "OpenRouteService API key updated successfully.",
+      "reconfigure_successful": "Route configuration updated successfully.",
+      "unknown": "The route configuration flow could not continue."
+    }
+  },
+  "selector": {
+    "endpoint_type": {
+      "options": {
+        "fixed": "Fixed location",
+        "entity": "Person/device tracker"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "duration": {
+        "name": "Duration"
+      },
+      "distance": {
+        "name": "Distance"
+      }
+    }
+  },
+  "exceptions": {
+    "invalid_auth": {
+      "message": "OpenRouteService explicitly rejected the configured API credential. Reauthentication is required."
+    }
+  }
+}

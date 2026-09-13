@@ -1,0 +1,88 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  validate-hacs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: HACS validation
+        uses: hacs/action@main
+        with:
+          category: integration
+
+  validate-hassfest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Hassfest validation
+        uses: home-assistant/actions/hassfest@master
+
+  validate-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check manifest and runtime versions match
+        shell: bash
+        run: |
+          python - <<'PY'
+          import ast
+          import json
+          from pathlib import Path
+
+          root = Path('custom_components/openrouteservice_travel_time')
+          manifest_version = json.loads((root / 'manifest.json').read_text(encoding='utf-8'))['version']
+          tree = ast.parse((root / 'const.py').read_text(encoding='utf-8'))
+          runtime_version = None
+          for node in tree.body:
+              if isinstance(node, ast.Assign):
+                  for target in node.targets:
+                      if isinstance(target, ast.Name) and target.id == 'VERSION':
+                          runtime_version = ast.literal_eval(node.value)
+          if runtime_version != manifest_version:
+              raise SystemExit(
+                  f'Version mismatch: manifest={manifest_version!r}, runtime={runtime_version!r}'
+              )
+          print(f'Version sync OK: {manifest_version}')
+          PY
+
+  validate-ha-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements_test.txt
+      - name: Install Home Assistant test dependencies
+        run: python -m pip install -r requirements_test.txt
+      - name: Run Home Assistant-native tests with coverage
+        run: >
+          pytest -q
+          --cov=custom_components.openrouteservice_travel_time
+          --cov-report=term-missing
+          --cov-report=xml
+          --cov-fail-under=95
+
+  validate-strict-typing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements_test.txt
+      - name: Install Home Assistant typing dependencies
+        run: python -m pip install -r requirements_test.txt
+      - name: Run strict mypy validation
+        run: mypy --config-file mypy.ini custom_components/openrouteservice_travel_time

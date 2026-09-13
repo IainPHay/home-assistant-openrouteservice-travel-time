@@ -1,0 +1,14 @@
+{
+  "domain": "openrouteservice_travel_time",
+  "name": "OpenRouteService Travel Time",
+  "codeowners": [
+    "@IainPHay"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/IainPHay/home-assistant-openrouteservice-travel-time",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/IainPHay/home-assistant-openrouteservice-travel-time/issues",
+  "requirements": [],
+  "version": "0.1.0-alpha.2"
+}

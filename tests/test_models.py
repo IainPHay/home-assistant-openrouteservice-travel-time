@@ -178,3 +178,16 @@ async def test_dynamic_entity_without_coordinates(hass) -> None:
 
     with pytest.raises(EndpointUnavailableError):
         resolve_endpoint(hass, entity_endpoint_config("person.iain"))
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "person.iain",
+        {"type": "entity"},
+    ],
+)
+def test_endpoint_persisted_shape_requires_object_and_entity_id(value: object) -> None:
+    """Persisted dynamic endpoint data must include a valid entity reference."""
+    with pytest.raises(ValueError):
+        endpoint_from_config(value)

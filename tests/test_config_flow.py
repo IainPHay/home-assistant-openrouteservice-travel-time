@@ -506,3 +506,183 @@ async def test_validate_route_uses_current_dynamic_coordinates_and_shared_sessio
     assert destination.latitude == DESTINATION["latitude"]
     assert destination.longitude == DESTINATION["longitude"]
     assert profile == DEFAULT_PROFILE
+
+
+async def test_dynamic_reconfigure_prefills_both_entity_endpoints(hass) -> None:
+    """Reconfiguring an existing dynamic route restores both entity selections."""
+    data = _entry_data(
+        origin=entity_endpoint_config("person.iain"),
+        destination=entity_endpoint_config("device_tracker.phone"),
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Dynamic route",
+        data=data,
+        unique_id=_route_signature(data),
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "entry_id": entry.entry_id,
+        },
+    )
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "Dynamic route",
+            CONF_ORIGIN_TYPE: ENDPOINT_ENTITY,
+            CONF_DESTINATION_TYPE: ENDPOINT_ENTITY,
+        },
+    )
+
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["step_id"] == "reconfigure_endpoints"
+    schema = result2["data_schema"]
+    assert schema({}) == {
+        CONF_ORIGIN_ENTITY: "person.iain",
+        CONF_DESTINATION_ENTITY: "device_tracker.phone",
+    }
+
+
+async def test_endpoint_step_without_pending_data_aborts(hass) -> None:
+    """An invalid direct jump to endpoint collection aborts safely."""
+    result = await _start_user_flow(hass)
+    flow = hass.config_entries.flow.async_get(result["flow_id"])
+    flow._pending_data = None
+
+    result2 = await flow.async_step_endpoints()
+
+    assert result2["type"] is FlowResultType.ABORT
+    assert result2["reason"] == "unknown"
+
+
+async def test_endpoint_build_error_is_translated(hass) -> None:
+    """A canonicalisation failure remains on the endpoint form."""
+    result = await _start_user_flow(hass, _start_data())
+
+    with patch(
+        "custom_components.openrouteservice_travel_time.config_flow._build_route_data",
+        side_effect=ValueError("bad endpoint"),
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            _fixed_endpoint_input(),
+        )
+
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["errors"] == {"base": "invalid_location"}
+
+
+async def test_reconfigure_endpoint_step_without_pending_data_aborts(hass) -> None:
+    """A broken direct jump in reconfiguration aborts safely."""
+    data = _entry_data()
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Route",
+        data=data,
+        unique_id=_route_signature(data),
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "entry_id": entry.entry_id,
+        },
+    )
+    flow = hass.config_entries.flow.async_get(result["flow_id"])
+    flow._pending_data = None
+
+    result2 = await flow.async_step_reconfigure_endpoints()
+
+    assert result2["type"] is FlowResultType.ABORT
+    assert result2["reason"] == "unknown"
+
+
+async def test_reconfigure_endpoint_build_error_is_translated(hass) -> None:
+    """Canonicalisation errors during reconfigure keep the form open."""
+    data = _entry_data()
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Route",
+        data=data,
+        unique_id=_route_signature(data),
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "entry_id": entry.entry_id,
+        },
+    )
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "Route",
+            CONF_ORIGIN_TYPE: ENDPOINT_FIXED,
+            CONF_DESTINATION_TYPE: ENDPOINT_FIXED,
+        },
+    )
+
+    with patch(
+        "custom_components.openrouteservice_travel_time.config_flow._build_route_data",
+        side_effect=ValueError("bad endpoint"),
+    ):
+        result3 = await hass.config_entries.flow.async_configure(
+            result2["flow_id"],
+            _fixed_endpoint_input(),
+        )
+
+    assert result3["type"] is FlowResultType.FORM
+    assert result3["errors"] == {"base": "invalid_location"}
+
+
+async def test_reconfigure_validation_error_preserves_submitted_endpoints(hass) -> None:
+    """Provider validation failure preserves endpoint values for correction."""
+    data = _entry_data()
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Route",
+        data=data,
+        unique_id=_route_signature(data),
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "entry_id": entry.entry_id,
+        },
+    )
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "Route",
+            CONF_ORIGIN_TYPE: ENDPOINT_FIXED,
+            CONF_DESTINATION_TYPE: ENDPOINT_FIXED,
+        },
+    )
+
+    changed_destination = {"latitude": 55.19, "longitude": -1.66}
+    with patch(
+        "custom_components.openrouteservice_travel_time.config_flow._async_validate_route",
+        new=AsyncMock(side_effect=OpenRouteServiceNoRouteError("no route")),
+    ):
+        result3 = await hass.config_entries.flow.async_configure(
+            result2["flow_id"],
+            {
+                CONF_ORIGIN_LOCATION: ORIGIN,
+                CONF_DESTINATION_LOCATION: changed_destination,
+            },
+        )
+
+    assert result3["type"] is FlowResultType.FORM
+    assert result3["errors"] == {"base": "no_route"}
+    assert result3["data_schema"]({})[CONF_DESTINATION_LOCATION] == changed_destination

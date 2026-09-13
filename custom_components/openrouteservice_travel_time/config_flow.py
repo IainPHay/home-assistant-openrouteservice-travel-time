@@ -147,14 +147,19 @@ def _endpoint_schema(
             )
         fields[marker] = _entity_selector()
     else:
-        if CONF_DESTINATION_LOCATION in current:
-            marker = vol.Required(
-                CONF_DESTINATION_LOCATION,
-                default=current[CONF_DESTINATION_LOCATION],
-            )
-        else:
-            marker = vol.Required(CONF_DESTINATION_LOCATION)
-        fields[marker] = _location_selector()
+        # Required location selectors need an initial value for Home Assistant's
+        # frontend form initialisation. Without one the config-flow form can render
+        # blank before the selector itself is displayed.
+        destination_default = current.get(
+            CONF_DESTINATION_LOCATION,
+            {
+                "latitude": hass.config.latitude,
+                "longitude": hass.config.longitude,
+            },
+        )
+        fields[
+            vol.Required(CONF_DESTINATION_LOCATION, default=destination_default)
+        ] = _location_selector()
 
     return vol.Schema(fields)
 

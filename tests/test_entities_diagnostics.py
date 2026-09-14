@@ -68,10 +68,10 @@ def test_sensor_metadata_and_values() -> None:
     duration = OpenRouteServiceSensor(coordinator, entry, SENSOR_DESCRIPTIONS[0])
     distance = OpenRouteServiceSensor(coordinator, entry, SENSOR_DESCRIPTIONS[1])
 
-    assert duration.native_value == 612.5
+    assert duration.native_value == 612.5 / 60
     assert duration.unique_id.endswith("_duration")
     assert duration.device_class is SensorDeviceClass.DURATION
-    assert duration.native_unit_of_measurement == UnitOfTime.SECONDS
+    assert duration.native_unit_of_measurement == UnitOfTime.MINUTES
     assert duration.state_class is SensorStateClass.MEASUREMENT
 
     assert distance.native_value == 845.25

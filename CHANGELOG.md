@@ -4,6 +4,14 @@ All notable changes to OpenRouteService Travel Time are documented here.
 
 The project uses semantic versioning for integration releases.
 
+## 0.1.0-alpha.6 — development
+
+### Changed
+
+- Distance is now exposed to Home Assistant in kilometres with one suggested decimal place, while provider results and diagnostics remain stored internally in metres.
+- Added regression coverage for kilometre conversion and Home Assistant distance metadata.
+- Refreshed user-facing documentation to match the proven alpha.5/alpha.6 runtime behaviour and the planned two-person BODS usage.
+
 ## 0.1.0-alpha.5 — development
 
 ### Changed

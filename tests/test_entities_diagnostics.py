@@ -74,10 +74,10 @@ def test_sensor_metadata_and_values() -> None:
     assert duration.native_unit_of_measurement == UnitOfTime.MINUTES
     assert duration.state_class is SensorStateClass.MEASUREMENT
 
-    assert distance.native_value == 845.25
+    assert distance.native_value == 845.25 / 1000
     assert distance.unique_id.endswith("_distance")
     assert distance.device_class is SensorDeviceClass.DISTANCE
-    assert distance.native_unit_of_measurement == UnitOfLength.METERS
+    assert distance.native_unit_of_measurement == UnitOfLength.KILOMETERS
     assert distance.state_class is SensorStateClass.MEASUREMENT
     assert distance.device_info["name"] == "Home to stop"
 

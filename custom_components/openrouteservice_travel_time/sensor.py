@@ -80,9 +80,9 @@ class OpenRouteServiceSensor(
     @property
     def native_value(self) -> float | None:
         """Return the current duration or distance when route data is available."""
-        data = self.coordinator.data
-        if data is None:
+        if not self.coordinator.last_update_success:
             return None
+        data = self.coordinator.data
         if self.entity_description.key == "duration":
             return duration_minutes(data.duration_seconds)
         return distance_kilometres(data.distance_metres)

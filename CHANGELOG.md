@@ -4,6 +4,16 @@ All notable changes to OpenRouteService Travel Time are documented here.
 
 The project uses semantic versioning for integration releases.
 
+## 0.1.0-alpha.7 — development
+
+### Fixed
+
+- A transient OpenRouteService failure during the immediate post-config setup refresh no longer leaves a successfully-created route device with no entities.
+- Route entities are now created even when the first provider refresh is temporarily unavailable; they remain unavailable until a later successful coordinator update.
+- Duration and Distance sensors safely expose no native value before the first successful route result instead of assuming coordinator data already exists.
+- Provider transport failures now log the underlying aiohttp/timeout exception type and message to make DNS, SSL, timeout and connection problems diagnosable from Home Assistant logs.
+- Added regression coverage for resilient initial setup and unavailable-before-first-update sensor behaviour.
+
 ## 0.1.0-alpha.6 — development
 
 ### Changed

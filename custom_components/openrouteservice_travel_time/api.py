@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 import json
+import logging
 import math
 from typing import cast
 
@@ -13,6 +14,7 @@ from aiohttp import ClientError, ClientSession, ClientTimeout
 from .const import API_BASE_URL, REQUEST_TIMEOUT_SECONDS, VERSION
 from .models import Coordinates, RouteResult
 
+_LOGGER = logging.getLogger(__name__)
 _NO_ROUTE_CODES = {2009, 2010, 2013, 2014, 2015, 2016, 2017}
 
 
@@ -86,6 +88,11 @@ class OpenRouteServiceClient:
                     )
                 payload = _decode_json(text)
         except (ClientError, TimeoutError) as err:
+            _LOGGER.warning(
+                "OpenRouteService request failed (%s): %s",
+                type(err).__name__,
+                err,
+            )
             raise OpenRouteServiceConnectionError(
                 "Unable to communicate with openrouteservice"
             ) from err

@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.const import CONF_API_KEY, CONF_NAME
+from homeassistant.exceptions import ConfigEntryNotReady
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.openrouteservice_travel_time import (
@@ -68,6 +69,35 @@ async def test_setup_entry_uses_shared_session_and_first_refresh(hass) -> None:
     assert entry.runtime_data.coordinator is coordinator
     assert entry.runtime_data.client.session is session
     assert entry.runtime_data.client.api_key == "key"
+
+
+async def test_setup_entry_loads_entities_after_transient_first_refresh_failure(
+    hass,
+) -> None:
+    """A transient initial provider failure must not leave a route with no entities."""
+    entry = _entry()
+    entry.add_to_hass(hass)
+    coordinator = MagicMock()
+    coordinator.async_config_entry_first_refresh = AsyncMock(
+        side_effect=ConfigEntryNotReady("temporary provider failure")
+    )
+
+    with (
+        patch(
+            "custom_components.openrouteservice_travel_time.OpenRouteServiceCoordinator",
+            return_value=coordinator,
+        ),
+        patch.object(
+            hass.config_entries,
+            "async_forward_entry_setups",
+            new=AsyncMock(),
+        ) as forward,
+    ):
+        assert await async_setup_entry(hass, entry) is True
+
+    coordinator.async_config_entry_first_refresh.assert_awaited_once()
+    forward.assert_awaited_once_with(entry, PLATFORMS)
+    assert entry.runtime_data.coordinator is coordinator
 
 
 async def test_unload_entry_unloads_platforms(hass) -> None:

@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_API_KEY
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import OpenRouteServiceClient
 from .const import PLATFORMS
 from .coordinator import OpenRouteServiceCoordinator
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -41,7 +45,19 @@ async def async_setup_entry(
         str(entry.data[CONF_API_KEY]),
     )
     coordinator = OpenRouteServiceCoordinator(hass, entry, client)
-    await coordinator.async_config_entry_first_refresh()
+
+    # A route is already provider-validated in the config flow. Do not leave a
+    # successfully-created entry without entities just because the immediate
+    # startup refresh hits a transient network/provider failure. Authentication
+    # failures still propagate normally and trigger Home Assistant reauth.
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except ConfigEntryNotReady as err:
+        _LOGGER.warning(
+            "Initial OpenRouteService refresh failed for %s; loading route entities unavailable until the next successful update: %s",
+            entry.title,
+            err,
+        )
 
     entry.runtime_data = OpenRouteServiceRuntimeData(
         client=client,

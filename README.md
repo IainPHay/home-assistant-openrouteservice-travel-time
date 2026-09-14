@@ -1,6 +1,6 @@
 # OpenRouteService Travel Time for Home Assistant
 
-[![Version](https://img.shields.io/badge/version-0.1.0--alpha.2-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.0--alpha.6-blue.svg)](CHANGELOG.md)
 [![HACS](https://img.shields.io/badge/HACS-custom-orange.svg)](https://www.hacs.xyz/)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.8%2B-41BDF5.svg)](https://www.home-assistant.io/)
 [![Validate](https://github.com/IainPHay/home-assistant-openrouteservice-travel-time/actions/workflows/validate.yml/badge.svg)](https://github.com/IainPHay/home-assistant-openrouteservice-travel-time/actions/workflows/validate.yml)
@@ -10,29 +10,31 @@ A standalone Home Assistant custom integration for [openrouteservice](https://op
 
 It is designed for ordinary Home Assistant use: walking-time sensors, commute routes, station/stop travel times, dashboards and automations. BODS Bus Tracker can consume its Duration sensor, but **BODS is only one downstream consumer** and there is no runtime dependency between the projects.
 
-> **Development status:** pre-release. The walking route implementation, dynamic Home Assistant location endpoints and quality gates are in place. Real Home Assistant/HACS installation testing is the next release gate.
+> **Development status:** pre-release. The walking route implementation, dynamic Home Assistant location endpoints, quota-aware polling/caching and Home Assistant-native sensor presentation have been validated in a real Home Assistant/HACS installation.
 
 ## Current alpha
 
-The current `0.1.0-alpha.2` implementation provides:
+The current `0.1.0-alpha.6` implementation provides:
 
 - Home Assistant UI-only configuration;
 - one route per config entry;
 - API key stored in the config entry;
 - fixed map locations;
 - dynamic `person` and `device_tracker` endpoints;
+- `person` resolution through direct coordinates, current zone, then source device tracker;
 - `foot-walking` routing;
-- **Duration** sensor using native seconds;
-- **Distance** sensor using native metres;
-- five-minute provider polling;
-- normal Home Assistant manual entity refresh;
+- **Duration** sensor in minutes with zero suggested decimal places;
+- **Distance** sensor in kilometres with one suggested decimal place;
+- five-minute coordinator updates with a hard five-minute minimum between provider calls per route;
+- coordinate-aware caching with a 25 m movement threshold and six-hour TTL;
+- normal Home Assistant manual entity refresh without bypassing provider throttling;
 - reconfiguration and reauthentication;
 - clean unload;
 - translated UI, errors, selector options and entity names;
 - privacy-safe diagnostics;
 - HACS/Hassfest validation, strict typing and Home Assistant-native tests.
 
-Cycling, driving and other routing profiles will be added only after the walking implementation has been validated end-to-end in a real Home Assistant instance.
+Cycling, driving and other routing profiles will be added only after the walking implementation is fully proven end-to-end.
 
 ## Architecture
 
@@ -42,7 +44,7 @@ OpenRouteService Travel Time owns:
 - route calculation;
 - origin and destination resolution;
 - route profile;
-- provider polling;
+- provider polling and quota protection;
 - provider-specific error handling.
 
 Other integrations consume ordinary Home Assistant entities. They do not receive the API key or precise moving-person coordinates.
@@ -53,7 +55,7 @@ The hosted API implementation targets:
 
 The deprecated `api.openrouteservice.org` host is not used.
 
-See [Architecture](docs/ARCHITECTURE.md) for the project contract.
+See [Architecture](docs/ARCHITECTURE.md) for the project contract and [Provider quota](docs/PROVIDER_QUOTA.md) for request ceilings and cache behaviour.
 
 ## Quality target
 
@@ -138,22 +140,22 @@ Enter:
 
 For each fixed endpoint, choose a map location.
 
-For each dynamic endpoint, select a Home Assistant `person` or `device_tracker` entity. The selected entity must currently expose usable latitude and longitude so setup can validate the route.
+For each dynamic endpoint, select a Home Assistant `person` or `device_tracker` entity. The integration validates that a trustworthy location can currently be resolved.
+
+For `person` entities, location resolution is Home Assistant-native and deliberately conservative:
+
+1. direct person latitude/longitude, if available;
+2. coordinates of the person's current Home Assistant zone;
+3. coordinates of the person's selected source `device_tracker`;
+4. otherwise unavailable.
 
 The API key and route are tested before Home Assistant creates the config entry.
 
 ### Runtime behaviour of dynamic endpoints
 
-Dynamic entity coordinates are resolved again immediately before **every** provider update. They are not copied into the config entry.
+Dynamic endpoint state is resolved again on every coordinator update. Coordinates are not copied into the config entry.
 
-If a selected entity:
-
-- is missing;
-- is `unknown` or `unavailable`;
-- stops exposing latitude/longitude; or
-- exposes invalid coordinates,
-
-the route becomes unavailable. The integration does **not** silently substitute Home Assistant's home coordinates or the last known route.
+If the configured endpoint cannot provide a trustworthy location, the route becomes unavailable. The integration does **not** silently substitute Home Assistant's home coordinates or an old route.
 
 This follows the project rule that behaviour must not be automated from untrusted state.
 
@@ -163,18 +165,29 @@ Each route is represented as one logical service device with two primary entitie
 
 | Entity | Home Assistant semantics |
 | --- | --- |
-| **Duration** | `SensorDeviceClass.DURATION`, native unit seconds. |
-| **Distance** | `SensorDeviceClass.DISTANCE`, native unit metres. |
+| **Duration** | `SensorDeviceClass.DURATION`, native unit minutes, zero suggested decimal places. |
+| **Distance** | `SensorDeviceClass.DISTANCE`, native unit kilometres, one suggested decimal place. |
+
+OpenRouteService provider data remains stored internally as seconds and metres; conversion happens only at the Home Assistant sensor boundary.
 
 Values are numeric, finite and non-negative. If a trustworthy route cannot be calculated, the coordinator update fails and the route entities become unavailable rather than exposing a guessed value.
 
-## Data updates
+## Data updates and quota protection
 
-The integration uses a `DataUpdateCoordinator` with a five-minute provider polling interval.
+The integration uses a `DataUpdateCoordinator` with a five-minute update interval, but coordinator updates are intentionally separated from provider request frequency.
 
-A normal Home Assistant `homeassistant.update_entity` refresh is supported. Every provider refresh can consume openrouteservice quota, so the integration does not poll rapidly just because a downstream consumer updates more often.
+Each configured route has a **hard minimum of five minutes between OpenRouteService requests**. Repeated manual refreshes or downstream consumers cannot bypass that ceiling. This gives a theoretical maximum of **288 provider requests per day per route**.
 
-For moving-person use cases, the person's/device tracker's **current coordinates are resolved at request time**, not at setup time.
+To reduce provider usage further:
+
+- endpoint coordinates are resolved on every coordinator update;
+- a cached route is reused while both endpoints have moved less than 25 m;
+- the cached route is forcibly revalidated after six hours;
+- fixed/stationary routes therefore usually need only about four provider calls per day.
+
+For moving-person use cases, the person's/device tracker's current location is resolved at update time, not setup time.
+
+See [Provider quota](docs/PROVIDER_QUOTA.md) for the full policy.
 
 ## Error and recovery behaviour
 
@@ -183,7 +196,7 @@ Failures are deliberately classified:
 - confirmed invalid credentials → Home Assistant reauthentication;
 - HTTP 429 → transient update failure; credentials remain valid;
 - timeout/network/server failure → transient update failure;
-- missing or invalid dynamic coordinates → route unavailable;
+- missing or invalid dynamic location → route unavailable;
 - no route found → unavailable, without straight-line or estimated substitution;
 - HTTP 403 → provider response is inspected; an ambiguous 403 does not automatically invalidate the API key;
 - malformed provider response → unavailable rather than returning guessed values.
@@ -201,7 +214,7 @@ Typical uses include:
 - automations based on a standard duration sensor;
 - provider-neutral routed walking input for BODS Bus Tracker.
 
-### BODS Bus Tracker
+### BODS Bus Tracker and multiple people
 
 A common configuration is:
 
@@ -209,7 +222,12 @@ A common configuration is:
 - **Destination:** fixed coordinates of the bus stop;
 - **Profile:** `foot-walking`.
 
-Then select this integration's **Duration** entity as the BODS routed walking-time sensor. BODS remains independent of openrouteservice credentials and API behaviour.
+For a two-person household, create one OpenRouteService route per person, for example:
+
+- `person.iain` → target bus stop;
+- `person.abbi` → target bus stop.
+
+Each route has its own request ceiling and cache. BODS can then evolve to accept separate routed walking-time sensors and choose the appropriate person's route by context, while remaining independent of OpenRouteService credentials and API behaviour.
 
 ### Dashboard example
 
@@ -243,7 +261,7 @@ Dynamic entity IDs are used only to retrieve state from the local Home Assistant
 
 ### Route entities are unavailable
 
-Check the configured dynamic `person` / `device_tracker` entity first. It must exist and expose numeric `latitude` and `longitude` attributes. An `unknown` or `unavailable` entity intentionally makes the route unavailable.
+Check the configured `person` / `device_tracker` endpoint first. A `person` may resolve from direct coordinates, its current Home Assistant zone, or its source tracker. If none is trustworthy, the route is intentionally unavailable.
 
 ### API key rejected
 
@@ -255,7 +273,7 @@ A 403 is not automatically treated as a bad key because provider access/policy f
 
 ### Rate limiting
 
-HTTP 429 is treated as a transient provider failure. Allow the normal coordinator interval to retry rather than repeatedly forcing manual updates.
+HTTP 429 is treated as a transient provider failure. The integration already enforces a five-minute per-route provider-call minimum and movement-aware caching; allow the normal coordinator to recover rather than repeatedly forcing updates.
 
 ### No route
 
@@ -278,10 +296,9 @@ For the current alpha:
 
 - one route per config entry;
 - walking is the only supported routing profile;
-- the polling interval is currently fixed at five minutes;
+- coordinator interval and provider minimum interval are currently fixed at five minutes;
 - route calculation depends on the hosted openrouteservice service and account quota;
 - dynamic endpoints are limited to `person` and `device_tracker`;
-- dynamic entities must expose usable latitude/longitude;
 - no geocoding/address search is provided;
 - the integration does not infer or substitute a route when provider/location state is not trustworthy.
 

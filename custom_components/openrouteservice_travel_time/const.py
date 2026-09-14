@@ -9,7 +9,7 @@ from homeassistant.const import Platform
 
 DOMAIN = "openrouteservice_travel_time"
 NAME = "OpenRouteService Travel Time"
-VERSION = "0.1.0-alpha.5"
+VERSION = "0.1.0-alpha.6"
 
 API_BASE_URL = "https://api.heigit.org/openrouteservice/v2"
 DEFAULT_PROFILE = "foot-walking"

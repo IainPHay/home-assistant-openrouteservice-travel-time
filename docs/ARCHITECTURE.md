@@ -20,12 +20,12 @@ This integration owns:
 - openrouteservice HTTP requests;
 - origin and destination resolution;
 - routing profile;
-- provider polling;
+- provider polling and quota protection;
 - provider error classification.
 
 Consumers receive normal Home Assistant entity states. They do not own provider credentials or API behaviour.
 
-BODS Bus Tracker is one validation consumer. It remains provider-neutral and reads only a standard duration sensor.
+BODS Bus Tracker is one validation consumer. It remains provider-neutral and reads only standard duration sensors.
 
 ## API baseline
 
@@ -57,7 +57,7 @@ A route contains:
 - destination endpoint;
 - routing profile.
 
-Polling is currently fixed at five minutes.
+The coordinator checks route state on a five-minute interval, but coordinator updates and provider requests are deliberately separated. Provider calls are quota-protected and may be skipped when a recent route result is still valid.
 
 ### Endpoint representation
 
@@ -85,22 +85,24 @@ Dynamic endpoints are stored as references, not coordinates:
 }
 ```
 
-The alpha.2 parser also accepts the alpha.1 direct latitude/longitude mapping so development installs are not unnecessarily broken.
+The parser also accepts the alpha.1 direct latitude/longitude mapping so development installs are not unnecessarily broken.
 
 ### Dynamic endpoint resolution
 
-For an entity endpoint, the coordinator reads the entity immediately before each provider request.
+For an entity endpoint, current coordinates are resolved immediately before each coordinator update.
 
-The state is trusted only when:
+For a `person` endpoint the trusted resolution order is:
 
-- the entity exists;
-- its state is neither `unknown` nor `unavailable`;
-- it exposes numeric latitude and longitude;
-- both coordinates are finite and within geographic ranges.
+1. direct latitude/longitude attributes on the person;
+2. coordinates of an explicitly reported containing Home Assistant zone;
+3. the person's currently selected source `device_tracker`;
+4. unavailable if none of the above provide trustworthy coordinates.
 
-No Home Assistant home-coordinate fallback is permitted.
+For a direct `device_tracker` endpoint, numeric latitude/longitude attributes are required.
 
-No last-known route is substituted when current location state is untrustworthy.
+The state is trusted only when the entity exists, is not `unknown`/`unavailable`, and the resolved coordinates are finite and geographically valid.
+
+No guessed Home Assistant home-coordinate fallback is permitted. No last-known route is substituted when the current location state itself is untrustworthy.
 
 ## Stable route identity
 
@@ -120,18 +122,60 @@ This keeps identity stable while the person/device tracker moves.
 2. A second config-flow step collects fixed locations or entity references.
 3. The current endpoint coordinates and API access are validated before the entry is created.
 4. Typed `ConfigEntry.runtime_data` owns the API client and coordinator.
-5. `DataUpdateCoordinator` resolves current coordinates immediately before each provider request.
-6. Duration and Distance entities read coordinator data.
-7. Reconfiguration can change endpoint types and references.
-8. Confirmed credential rejection initiates Home Assistant reauthentication.
-9. Clean unload delegates to Home Assistant platform lifecycle handling.
+5. `DataUpdateCoordinator` resolves current coordinates on each coordinator update.
+6. Quota policy decides whether a provider request is needed or a cached route can be reused.
+7. Duration and Distance entities read coordinator data.
+8. Reconfiguration can change endpoint types and references.
+9. Confirmed credential rejection initiates Home Assistant reauthentication.
+10. Clean unload delegates to Home Assistant platform lifecycle handling.
+
+## Provider quota and route-cache policy
+
+The integration deliberately protects OpenRouteService quota per configured route.
+
+### Hard request ceiling
+
+A config entry cannot make provider requests more frequently than once every five minutes, even if Home Assistant or a downstream integration repeatedly forces entity refreshes.
+
+The theoretical maximum is therefore:
+
+`24 hours × 60 minutes ÷ 5 minutes = 288 provider requests/day/route`
+
+This is a ceiling, not a target. Normal use should be substantially lower because the coordinator reuses cached routes when endpoint movement does not justify a recalculation.
+
+### Movement threshold
+
+After the hard five-minute interval has elapsed, a cached route remains valid while both endpoints have moved less than 25 metres from the coordinates used for the last provider request.
+
+This avoids wasting quota on GPS jitter or tiny movements that are unlikely to change a walking route meaningfully.
+
+### Cache TTL
+
+Even when endpoints remain stationary, the cached route expires after six hours. A fresh provider request is then made so fixed/stationary routes are not cached indefinitely.
+
+For a permanently fixed route this normally means about four provider requests per day rather than 288.
+
+### Multi-person implications
+
+Quota protection is per route/config entry. This makes it practical to configure separate routed walking sensors for different people, for example:
+
+- `person.iain` → a bus stop;
+- `person.abbi` → the same bus stop.
+
+Each route has its own hard request ceiling and cache. BODS Bus Tracker can remain provider-neutral and may evolve to consume more than one routed walking-time sensor for a two-person household without either user having to share raw OpenRouteService logic or credentials with BODS.
+
+Provider plan quotas can change, so users should still check the limits shown in their OpenRouteService account/dashboard when creating many routes.
+
+See [Provider quota and polling](PROVIDER_QUOTA.md) for worked examples.
 
 ## Entity contract
 
 ### Duration
 
 - sensor device class: duration;
-- native unit: seconds;
+- native unit: minutes;
+- provider value is retained internally in seconds and converted at the entity boundary;
+- suggested display precision: 0 decimal places;
 - numeric, finite, non-negative;
 - unavailable when the latest coordinator update is not trustworthy.
 
@@ -139,6 +183,7 @@ This keeps identity stable while the person/device tracker moves.
 
 - sensor device class: distance;
 - native unit: metres;
+- suggested display precision: 0 decimal places;
 - numeric, finite, non-negative;
 - unavailable when the latest coordinator update is not trustworthy.
 

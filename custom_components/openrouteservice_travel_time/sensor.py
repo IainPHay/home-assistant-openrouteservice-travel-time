@@ -25,8 +25,9 @@ SENSOR_DESCRIPTIONS = (
         key="duration",
         translation_key="duration",
         device_class=SensorDeviceClass.DURATION,
-        native_unit_of_measurement=UnitOfTime.SECONDS,
+        native_unit_of_measurement=UnitOfTime.MINUTES,
         state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
     ),
     SensorEntityDescription(
         key="distance",
@@ -34,8 +35,14 @@ SENSOR_DESCRIPTIONS = (
         device_class=SensorDeviceClass.DISTANCE,
         native_unit_of_measurement=UnitOfLength.METERS,
         state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
     ),
 )
+
+
+def duration_minutes(duration_seconds: float) -> float:
+    """Convert provider seconds to Home Assistant native minutes."""
+    return duration_seconds / 60.0
 
 
 class OpenRouteServiceSensor(
@@ -69,7 +76,7 @@ class OpenRouteServiceSensor(
     def native_value(self) -> float:
         """Return the current duration or distance."""
         if self.entity_description.key == "duration":
-            return self.coordinator.data.duration_seconds
+            return duration_minutes(self.coordinator.data.duration_seconds)
         return self.coordinator.data.distance_metres
 
 

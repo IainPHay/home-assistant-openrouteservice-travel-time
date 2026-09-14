@@ -9,11 +9,18 @@ from homeassistant.const import Platform
 
 DOMAIN = "openrouteservice_travel_time"
 NAME = "OpenRouteService Travel Time"
-VERSION = "0.1.0-alpha.4"
+VERSION = "0.1.0-alpha.5"
 
 API_BASE_URL = "https://api.heigit.org/openrouteservice/v2"
 DEFAULT_PROFILE = "foot-walking"
+
+# Coordinator updates are intentionally separated from provider request frequency.
+# These limits keep downstream refreshes from bypassing the OpenRouteService quota
+# protection applied by the coordinator.
 DEFAULT_SCAN_INTERVAL = timedelta(minutes=5)
+MINIMUM_PROVIDER_REQUEST_INTERVAL = timedelta(minutes=5)
+ROUTE_CACHE_TTL = timedelta(hours=6)
+MINIMUM_ROUTE_CHANGE_METRES = 25.0
 REQUEST_TIMEOUT_SECONDS = 20
 
 CONF_ORIGIN = "origin"

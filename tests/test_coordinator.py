@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -22,6 +22,8 @@ from custom_components.openrouteservice_travel_time.const import (
     DEFAULT_PROFILE,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    MINIMUM_PROVIDER_REQUEST_INTERVAL,
+    ROUTE_CACHE_TTL,
 )
 from custom_components.openrouteservice_travel_time.coordinator import (
     OpenRouteServiceCoordinator,
@@ -80,30 +82,98 @@ async def test_fixed_update_returns_route_result(hass) -> None:
     assert coordinator.update_interval == DEFAULT_SCAN_INTERVAL
 
 
-async def test_dynamic_origin_is_resolved_on_each_update(hass) -> None:
-    """A moving person is resolved immediately before every provider request."""
+async def test_hard_minimum_interval_caps_provider_calls(hass) -> None:
+    """A manual refresh cannot bypass the per-route five-minute request ceiling."""
     entry = _entry(origin=entity_endpoint_config("person.iain"))
     coordinator, client = _coordinator(hass, entry=entry)
     client.async_route.return_value = RouteResult(500.0, 700.0)
-
     hass.states.async_set(
         "person.iain",
         "not_home",
         {"latitude": 55.20, "longitude": -1.70},
     )
-    await coordinator._async_update_data()
-    first_origin = client.async_route.await_args.args[0]
 
+    with patch(
+        "custom_components.openrouteservice_travel_time.coordinator.time.monotonic",
+        side_effect=[1000.0, 1001.0],
+    ):
+        first = await coordinator._async_update_data()
+        hass.states.async_set(
+            "person.iain",
+            "not_home",
+            {"latitude": 55.30, "longitude": -1.80},
+        )
+        second = await coordinator._async_update_data()
+
+    assert first == second
+    assert client.async_route.await_count == 1
+
+
+async def test_dynamic_origin_refreshes_after_movement_and_minimum_interval(hass) -> None:
+    """A materially moved person requests a new route after the hard interval."""
+    entry = _entry(origin=entity_endpoint_config("person.iain"))
+    coordinator, client = _coordinator(hass, entry=entry)
+    client.async_route.side_effect = [
+        RouteResult(500.0, 700.0),
+        RouteResult(400.0, 600.0),
+    ]
     hass.states.async_set(
         "person.iain",
         "not_home",
-        {"latitude": 55.30, "longitude": -1.80},
+        {"latitude": 55.20, "longitude": -1.70},
     )
-    await coordinator._async_update_data()
-    second_origin = client.async_route.await_args.args[0]
 
-    assert (first_origin.latitude, first_origin.longitude) == (55.20, -1.70)
-    assert (second_origin.latitude, second_origin.longitude) == (55.30, -1.80)
+    second_time = 1000.0 + MINIMUM_PROVIDER_REQUEST_INTERVAL.total_seconds()
+    with patch(
+        "custom_components.openrouteservice_travel_time.coordinator.time.monotonic",
+        side_effect=[1000.0, second_time],
+    ):
+        await coordinator._async_update_data()
+        hass.states.async_set(
+            "person.iain",
+            "not_home",
+            {"latitude": 55.30, "longitude": -1.80},
+        )
+        result = await coordinator._async_update_data()
+
+    assert result == RouteResult(400.0, 600.0)
+    assert client.async_route.await_count == 2
+
+
+async def test_unchanged_route_reuses_cache_until_ttl(hass) -> None:
+    """Unchanged endpoints do not consume provider quota every coordinator tick."""
+    coordinator, client = _coordinator(hass)
+    client.async_route.return_value = RouteResult(600.0, 800.0)
+    second_time = 1000.0 + MINIMUM_PROVIDER_REQUEST_INTERVAL.total_seconds() + 1.0
+
+    with patch(
+        "custom_components.openrouteservice_travel_time.coordinator.time.monotonic",
+        side_effect=[1000.0, second_time],
+    ):
+        first = await coordinator._async_update_data()
+        second = await coordinator._async_update_data()
+
+    assert first == second
+    assert client.async_route.await_count == 1
+
+
+async def test_unchanged_route_refreshes_when_cache_ttl_expires(hass) -> None:
+    """A stationary route is periodically refreshed so cached data is not permanent."""
+    coordinator, client = _coordinator(hass)
+    client.async_route.side_effect = [
+        RouteResult(600.0, 800.0),
+        RouteResult(610.0, 810.0),
+    ]
+    second_time = 1000.0 + ROUTE_CACHE_TTL.total_seconds()
+
+    with patch(
+        "custom_components.openrouteservice_travel_time.coordinator.time.monotonic",
+        side_effect=[1000.0, second_time],
+    ):
+        await coordinator._async_update_data()
+        result = await coordinator._async_update_data()
+
+    assert result == RouteResult(610.0, 810.0)
     assert client.async_route.await_count == 2
 
 
